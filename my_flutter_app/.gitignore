@@ -1,0 +1,55 @@
+# General
+.DS_Store
+.idea/
+.vscode/
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+*.lock
+
+# Android
+android/.gradle/
+android/app/build/
+android/local.properties
+android/key.properties
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral_plugins/
+ios/Flutter/Flutter.framework/
+ios/Flutter/Flutter.podspec
+ios/Runner/GeneratedPluginRegistrant.*
+ios/Runner/Runner.xcodeproj/project.xcworkspace/
+ios/Runner/Runner.xcodeproj/xcuserdata/
+ios/Flutter/flutter_export_environment.sh
+
+# Web (if used)
+web/build/
+web/.dart_tool/
+
+# Linux (if used)
+linux/build/
+linux/.dart_tool/
+
+# macOS (if used)
+macos/build/
+macos/.dart_tool/
+macos/Flutter/ephemeral_plugins/
+
+# Windows (if used)
+windows/build/
+windows/.dart_tool/
+windows/runner/Debug/
+windows/runner/Release/
+windows/runner/Profile/
+windows/flutter/ephemeral/
+
+# Test files
+coverage/
+
+# Generated files not to be versioned
+**/*.g.dart
+**/*.freezed.dart
