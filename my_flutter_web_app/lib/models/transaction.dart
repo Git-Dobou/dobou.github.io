@@ -1,11 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:my_flutter_web_app/models/baseModel.dart';
 import 'package:my_flutter_web_app/models/category.dart';
 import 'package:my_flutter_web_app/models/debt.dart';
 import 'package:my_flutter_web_app/models/economize.dart';
 import 'package:my_flutter_web_app/models/transaction_new_amount.dart';
 import 'package:my_flutter_web_app/models/transaction_status.dart';
 import 'package:collection/collection.dart';
+import 'package:my_flutter_web_app/providers/transaction_notifier.dart';
 
 enum TransactionType { Income, Expense, Unknown }
 enum TransactionCyklus {Monthly, Year, Quarterly, Unknown}
@@ -21,19 +23,19 @@ extension TransactionExtension on Transaction {
     }
     TransactionType? get typeTypisiert {
     return TransactionType.values.firstWhere(
-        (e) => e.toString().split('.').last == type,
+        (e) => e.name.toLowerCase() == type.toLowerCase(),
         orElse: () => TransactionType.Unknown);
   }
 
   TransactionCyklus? get cyklusTypisiert {
     return TransactionCyklus.values.firstWhere(
-        (e) => e.toString().split('.').last == cyklus,
+        (e) => e.name.toLowerCase() == cyklus.toLowerCase(),
         orElse: () => TransactionCyklus.Unknown);
   }
 
   TransactionStatusType? get statusTypisiert {
     return TransactionStatusType.values.firstWhere(
-        (e) => e.toString().split('.').last == cyklus,
+        (e) => e.name.toLowerCase() == cyklus,
         orElse: () => TransactionStatusType.Unknown);
   }
 
@@ -58,9 +60,12 @@ extension TransactionExtension on Transaction {
     //     t.statusTypisiert == TransactionStatusType.Payed &&
     //     (AuthViewModel.instance.activeProject?.transactionWithMonth == false ||
     //         t.date.month == date!.month));
-    return transactionStatus.any((t) =>
+
+    var check = transactionStatus.any((t) =>
         t.statusTypisiert == TransactionStatusType.Payed &&
             t.date.month == date!.month);
+
+    return check;
   }
 
   bool isTransactionDeactivated(DateTime? date) {
@@ -73,13 +78,17 @@ extension TransactionExtension on Transaction {
             t.date.month == date!.month);
   }
 
+  double getAmount(DateTime date) {
+    return getNewAmount(date) ?? amount;
+  }
+
   double? getNewAmount(DateTime date) {
-    final formattedDate = DateFormat('yyyy-MM').format(date);
+    var title2 = title;
 
     var newAmount = transactionNewAmounts.firstWhereOrNull(
       (t) =>
-          DateFormat('yyyy-MM').format(t.availableFrom) == formattedDate &&
-          DateFormat('yyyy-MM').format(t.availableUntil ?? DateTime(1900)) == formattedDate,
+          (t.availableFrom.isSameMonthYear(date)) ||
+          (t.availableUntil == null && t.availableFrom.isSameOrBeforeMonthYear(date))
     );
 
     newAmount ??= transactionNewAmounts.firstWhereOrNull(
@@ -93,7 +102,7 @@ extension TransactionExtension on Transaction {
   }
 }
 
-class Transaction {
+class Transaction extends BaseModel {
   final String id; // Document ID
   final String title;
   final String type;
@@ -101,25 +110,25 @@ class Transaction {
   final String? comment;
   final double amount;
   final DateTime availableFrom;
-  final DateTime? availableUntil;
+  DateTime? availableUntil;
   final DocumentReference? categoryRef;
-  final bool isFixed;
+  bool isFixed;
   final List<DocumentReference>? transactionStatusRef; // List of refs
   final List<DocumentReference>? transactionNewAmountsRef; // List of refs
   final List<DocumentReference>? subTransactionsRef; // List of refs to other Transactions
   final DocumentReference? parentRef; // Ref to parent Transaction
   final String? clientId;
   final String? currency;
-  final bool? isDeleted;
   final DateTime? timestamp; // For creation/update
 
   Category? category;
   Debt? debt;
   final Economize? economize = null;
   List<TransactionStatus> transactionStatus = [];
-  final List<TransactionNewAmount> transactionNewAmounts = const [];
-  final List<Transaction> subTransactions = const [];
+  List<TransactionNewAmount> transactionNewAmounts = [];
+  List<Transaction> subTransactions = [];
   final Transaction? parent = null;
+  late bool isLoadingDetails = true;
 
   Transaction({
     required this.id,
@@ -138,48 +147,12 @@ class Transaction {
     this.parentRef,
     this.clientId,
     this.currency,
-    this.isDeleted,
     this.timestamp,
   });
 
 
   factory Transaction.fromMap(Map<String, dynamic> json, String id) {
-           var title= json['title'] as String;
-
-    try {
-      if(title == 'Trinkgeld Burgerking') {
-        var a = '';
- 
-      }
-
-      var type= json['type'] as String;var
-      cyklus= json['cyklus'] as String;var
-      //comment= json['comment'] as String?;var
-      amount= (json['amount'] as num).toDouble();var
-      availableFrom= (json['availableFrom'] as Timestamp).toDate();var
-      categoryRef= json['categoryRef'] as DocumentReference?;var
-
-      isFixed= json['isFixed'] as bool? ?? false;var
-      transactionStatusRef= (json['transactionStatusRef'] as List<dynamic>?)
-          ?.map((ref) => ref as DocumentReference)
-          .toList();var
-      transactionNewAmountsRef= (json['transactionNewAmountsRef'] as List<dynamic>?)
-          ?.map((ref) => ref as DocumentReference)
-          .toList();var
-
-      subTransactionsRef= (json['subTransactionsRef'] as List<dynamic>?)
-          ?.map((ref) => ref as DocumentReference)
-          .toList();var
-      // parentRef= json['parentRef'] as DocumentReference?;var
-      clientId= json['clientId'] as String?;var
-      currency= json['currency'] as String?;var
-      isDeleted= json['isDeleted'] as bool?;
-      } catch (e) {
-        print("Error parsing transactions: \$e");
-      }
-          
-
-    return Transaction(
+    var tr = Transaction(
       id: id,
 
       title: json['title'] as String,
@@ -205,15 +178,21 @@ class Transaction {
       // parentRef: json['parentRef'] as DocumentReference?,
       clientId: json['clientId'] as String?,
       currency: json['currency'] as String?,
-      isDeleted: json['isDeleted'] as bool?,
     );
+
+    tr.isDeleted = (json['isDeleted'] as bool?) ?? false;
+
+    return tr;
   }
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = {
-      'name': title,
       'amount': amount,
-      'date': Timestamp.fromDate(availableFrom),
+      'title': title,
+      'cyklus': cyklus,
+      'type': type,
+      'availableFrom': availableFrom,
+      'availableUntil': availableUntil,
       'categoryRef': categoryRef,
       'isFixed': isFixed,
       'isSubTransaction': isSubTransaction,
@@ -224,10 +203,9 @@ class Transaction {
     if (subTransactionsRef != null) data['subTransactionsRef'] = subTransactionsRef;
     if (parentRef != null) data['parentRef'] = parentRef;
     if (clientId != null) data['clientId'] = clientId;
-    if (currentAmount != null) data['amount'] = currentAmount;
     if (currency != null) data['currency'] = currency;
     if (isDeleted != null) data['isDeleted'] = isDeleted;
-    if (timestamp != null) data['timestamp'] = Timestamp.fromDate(timestamp!);
     return data;
   }
 }
+

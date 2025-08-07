@@ -1,36 +1,49 @@
 import 'dart:async';
+import 'package:jiffy/jiffy.dart';
+import 'package:collection/collection.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:my_flutter_web_app/models/category.dart';
+import 'package:my_flutter_web_app/models/debt.dart';
 import 'package:my_flutter_web_app/models/project.dart';
 import 'package:my_flutter_web_app/models/transaction_status.dart';
 import 'package:my_flutter_web_app/providers/BaseNotifier.dart';
+import 'package:my_flutter_web_app/providers/debt_notifier.dart';
 import '../models/transaction.dart' as model;
+import '../models/debt.dart' as model_debt;
+import '../models/transaction_new_amount.dart';
 import '../models/user.dart' as modelUser;
 
 class TransactionNotifier extends BaseNotifier {
 
+  DebtNotifier debtNotifier;
   List<model.Transaction> _transactions = [];
-  
+  Map<DateTime, List<model.Transaction>> _transactionsPerMonth = {};
+
+  List<model.Transaction> _filteredTransactions = [];
+
   bool _isLoading = false;
   StreamSubscription? _transactionSubscription;
   User? _currentUser;
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1); // Normalized to start of month
 
   List<model.Transaction> get transactions => _transactions;
+  List<model.Transaction> get filteredTransactions => _filteredTransactions;
 
   bool get isLoading => _isLoading;
   DateTime get selectedMonth => _selectedMonth;
 
-  TransactionNotifier() {
+  TransactionNotifier({required this.debtNotifier}) {
     _currentUser = auth.currentUser;
-    if (_currentUser != null) {
-      fetchTransactions(); // Initial fetch for the default selectedMonth (current month)
-    }
+    // if (_currentUser != null) {
+    //   fetchTransactions(); // Initial fetch for the default selectedMonth (current month)
+    // }
+
     auth.authStateChanges().listen((user) {
       _currentUser = user;
       if (_currentUser != null) {
+
         // Reset selectedMonth to current month on new login if desired, or keep existing
         // _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
         fetchTransactions();
@@ -43,77 +56,303 @@ class TransactionNotifier extends BaseNotifier {
     });
   }
 
-  void selectMonth(DateTime month) {
+  void loading(bool status){
+    _isLoading = status;
+  }
+
+  int filteredTransactionsIndex = 1;
+  String searchText = "";
+  int filteredIndex = 2;
+  
+  List<model.Transaction> filteredTransactionsForView = [];
+
+  setFilteredTransactions() {
+    var type = filteredTransactionsIndex == 0 ? model.TransactionType.Income 
+                : model.TransactionType.Expense;
+
+    var baseList = filteredTransactions
+    .where((b) => b.typeTypisiert == type);
+
+    var filteredBySearch = baseList.where((tx) {
+      return searchText.isEmpty ||
+          tx.title.toLowerCase().contains(searchText.toLowerCase());
+    }).toList();
+
+    switch (filteredIndex) {
+      case 0:
+        filteredTransactionsForView = filteredBySearch.where((tx) {
+          return !tx.isTransactionDeactivated(selectedMonth) &&
+              tx.isTransactionPayed(selectedMonth);
+        }).toList();
+        break;
+      case 1:
+      filteredTransactionsForView = filteredBySearch.where((tx) {
+        return !tx.isTransactionDeactivated(selectedMonth) &&
+            !tx.isTransactionPayed(selectedMonth);
+      }).toList();
+      break;
+      default:
+      
+    filteredTransactionsForView = filteredBySearch;
+    _isLoading = false;
+    notifyListeners();
+    }
+  }
+
+  void selectMonth(DateTime month) async {
     _selectedMonth = DateTime(month.year, month.month, 1); // Normalize to start of month
     notifyListeners(); // Notify listeners about month change for UI update
+    
     fetchTransactions(); // Re-fetch transactions for the new month
   }
 
-  void fetchTransactions() {
-    if (_currentUser == null) {
-      _transactions = [];
-      _isLoading = false;
-      notifyListeners();
-      return;
-    }
-    
-    _isLoading = true;
-    notifyListeners();
+  Map<DateTime, List<TransactionStatus>> dic = {};
+  Map<DateTime, List<TransactionNewAmount>> dicNewAmounts = {};
 
-    // Calculate start of the selected month and start of the next month
-    DateTime startOfMonth = _selectedMonth; // Already normalized
-    DateTime startOfNextMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 1);
-
-    _transactionSubscription?.cancel(); // Cancel previous subscription before creating a new one
-     fetchAll('transaction', model.Transaction.fromMap).then((result) async {
-      _transactions = result;
-      for(var transaction in _transactions) {
-        transaction.category = await readRef(transaction.categoryRef, Category.fromMap);
-      }
-      notifyListeners();
-      _isLoading = false;
-    });
+  Future<model.Transaction> BuildTransactionFromDoc(DocumentReference doc) async {
+      var transaction = await readRef(doc, model.Transaction.fromMap);
+      return BuildTransactionWithBoth(transaction!, doc);
   }
 
-  Future<void> addTransaction(model.Transaction transaction) async {
+  Future<model.Transaction> BuildTransactionWithBoth(model.Transaction transaction, DocumentReference ref) async {
+
+    transaction.category = await readRef(transaction.categoryRef, Category.fromMap);
+
+  final snapshot = await firestore
+      .collection('debt')
+      .where('transactionRef', isEqualTo: ref)
+      .get();
+
+  if (snapshot.docs.isNotEmpty) {
+    final data = snapshot.docs.first.data();
+    final id = snapshot.docs.first.id;
+
+    if (data.isNotEmpty) {
+      final debt = model_debt.Debt.fromMap(data, id);
+      transaction.debt = await debtNotifier.buildDebt(debt);
+      
+      final restMonth = transaction.debt?.restMonth ?? 0;
+      if(restMonth == 0)
+      {
+        transaction.availableUntil = debt.lastPaymentDate;
+      } else {
+      transaction.availableUntil = Jiffy.parseFromDateTime(DateTime.now())
+          .add(months: restMonth)
+          .dateTime;
+      }
+    }
+  }
+
+    if ((transaction.transactionNewAmountsRef  ?? []).isNotEmpty) {
+      final snapshot = await firestore
+                          .collection('transactionNewAmount') // passe an deine Collection an
+                          .where(FieldPath.documentId, whereIn: transaction.transactionNewAmountsRef)
+                          // .where('date', isEqualTo: selectedMonth)
+                          .get();
+
+      transaction.transactionNewAmounts = snapshot.docs
+      .map((doc) => TransactionNewAmount.fromMap(doc.data(), doc.id))
+      .toList();
+    }
+
+    if ((transaction.transactionStatusRef  ?? []).isNotEmpty) {
+      final snapshot = await firestore
+                          .collection('transactionStatus') // passe an deine Collection an
+                          .where(FieldPath.documentId, whereIn: transaction.transactionStatusRef)
+                          .where('date', isEqualTo: selectedMonth)
+                          .get();
+
+      transaction.transactionStatus = snapshot.docs
+      .map((doc) => TransactionStatus.fromMap(doc.data(), doc.id))
+      .toList();
+    }
+
+    if ((transaction.subTransactionsRef  ?? []).isNotEmpty) {
+      final snapshot = await firestore
+                          .collection('transaction') // passe an deine Collection an
+                          .where(FieldPath.documentId, whereIn: transaction.subTransactionsRef)
+                          .get();
+
+      transaction.subTransactions = snapshot.docs
+      .map((doc) => model.Transaction.fromMap(doc.data(), doc.id))
+      .toList();
+    }
+
+    return transaction;
+  }
+
+void fetchTransactions() async {
+  if (_currentUser == null) {
+    _transactions = [];
+    _isLoading = false;
+    notifyListeners();
+    return;
+  }
+
+  _isLoading = true;
+
+  if (!_transactionsPerMonth.keys.contains(selectedMonth)) {
+    _transactions.clear();
+
+    final startOfMonth = DateTime(selectedMonth.year, selectedMonth.month);
+    final nextMonth = Jiffy.parseFromDateTime(startOfMonth)
+          .add(months: 1)
+          .dateTime;
+
+    // await firestore.collection('transaction').add({
+    //   'availableUntil': null, // explizit setzen
+    // });
+
+final fixedQuery = await firestore
+    .collection('transaction')
+    .where("clientId", isEqualTo: "1735421-1353-53")
+    .where("isFixed", isEqualTo: true)
+    .where("availableFrom", isLessThan: nextMonth)
+    .where("availableUntil", isGreaterThanOrEqualTo: startOfMonth) // Nur die >=-Fälle
+    .get();
+
+final fixedNullUntilQuery = await firestore
+    .collection('transaction')
+    .where("clientId", isEqualTo: "1735421-1353-53")
+    // .where("parent", isNull: true)
+    .where("isFixed", isEqualTo: true)
+    .where("availableFrom", isLessThan: nextMonth)
+    .where("availableUntil", isNull: true) // Die NULL-Fälle
+    .get();
+
+final nonFixedQuery = await firestore
+    .collection('transaction')
+    .where("clientId", isEqualTo: "1735421-1353-53")
+    .where("isFixed", isEqualTo: false)
+    .where("availableFrom", isGreaterThanOrEqualTo: startOfMonth)
+    .where("availableFrom", isLessThan: nextMonth)
+    .get();
+
+// 👇 Alle Ergebnisse kombinieren
+final allDocs = [
+  ...fixedQuery.docs,
+  ...fixedNullUntilQuery.docs,
+  ...nonFixedQuery.docs,
+];
+
+    // var result = allDocs.map((b) => model.Transaction.fromMap(b.data(), b.id)).toList();
+
+    // final result = await fetchAll('transaction', model.Transaction.fromMap);
+    // print('Fetch all');
+
+    // _transactions = result.where((b) => !b.isDeleted).toList();
+
+    for (int i = 0; i < allDocs.length; i++) {
+      var doc = allDocs[i];
+
+      if(doc['isDeleted'] == true) {
+        continue;
+      }
+
+      final updated = await BuildTransactionWithBoth(model.Transaction.fromMap(doc.data(), doc.id), doc.reference);
+      updated.isLoadingDetails = false;
+      _transactions.add(updated);
+    }    
+
+      _transactionsPerMonth[selectedMonth] = _transactions;
+  }
+  else {
+    _transactions = _transactionsPerMonth[selectedMonth]!;
+  }
+
+  // Lade ggf. Statusdaten
+  // if (!dic.containsKey(selectedMonth)) {
+  //   final snapshot = await firestore
+  //       .collection('transactionStatus')
+  //       .where('date', isEqualTo: selectedMonth)
+  //       .get();
+
+  //   final status = snapshot.docs
+  //       .map((doc) => TransactionStatus.fromMap(doc.data(), doc.id))
+  //       .toList();
+
+  //   if (status.isNotEmpty) {
+  //     dic[selectedMonth] = status;
+  //   }
+  // }
+
+  // // Mappe Statusdaten auf Transaktionen
+  // for (var toElement in _filteredTransactions) {
+  //   final potStatus = dic[selectedMonth]
+  //           ?.where((status) =>
+  //               toElement.transactionStatusRef?.any((ref) => ref.id == status.id) == true)
+  //           .toList() ??
+  //       [];
+
+  //   final potNewAmounts = dicNewAmounts[selectedMonth]
+  //           ?.where((status) =>
+  //               toElement.transactionNewAmountsRef?.any((ref) => ref.id == status.id) == true)
+  //           .toList() ??
+  //       [];
+
+  //   toElement.transactionStatus = potStatus;
+  //   toElement.transactionNewAmounts = potNewAmounts;
+  // }
+
+    _filteredTransactions = _transactions.where((transaction) => checkTransactionForMonth(transaction, selectedMonth)).toList();
+    setFilteredTransactions();
+    notifyListeners();
+    _isLoading = false;
+  }
+
+  Future<DocumentReference> addTransaction(model.Transaction transaction) async {
     if (_currentUser == null) {
       print("Cannot add transaction: No user logged in.");
       throw Exception("User not logged in");
     }
     
     Map<String, dynamic> transactionData = transaction.toJson();
-    transactionData['clientId'] = _currentUser!.uid;
-    transactionData.putIfAbsent('timestamp', () => FieldValue.serverTimestamp()); 
+    completeAdd(transactionData);
 
-    // _isLoading = true; // This might cause UI flicker if stream updates quickly.
-    // notifyListeners(); // Usually not needed here if stream updates UI.
+    _isLoading = true; // This might cause UI flicker if stream updates quickly.
+
     try {
-      await firestore.collection('transaction').add(transactionData);
-      // If the new transaction is within the currently selected month, 
-      // the stream will pick it up. If it's for a different month,
-      // it will appear when that month is selected.
+      var doc = await firestore.collection('transaction').add(transactionData);
+
+      var newtr = await BuildTransactionFromDoc(doc);
+      filteredTransactions.add(newtr);
+      setFilteredTransactions();
+
+      return doc;
     } catch (e) {
-      print("Error adding transaction: \$e");
+      print("Error adding transaction: $e");
       throw e; 
     } finally {
-      // _isLoading = false;
-      // notifyListeners();
+      _isLoading = false;
+      notifyListeners();
     }
   }
   
   Future<void> updateTransaction(model.Transaction transaction) async {
     if (_currentUser == null) throw Exception("User not logged in");
     Map<String, dynamic> transactionData = transaction.toJson();
-    transactionData['clientId'] = _currentUser!.uid; 
+    transactionData = completeUpdate(transactionData);
+
     await firestore.collection('transaction').doc(transaction.id).update(transactionData);
-    // Stream will update the list if the transaction remains in the selected month.
-    // If date changed, it might move out of view until that month is selected.
+
+    var index = filteredTransactions.indexWhere((b) => b.id == transaction.id);
+
+    var ref = await getRef(transaction.id, 'transaction');
+    filteredTransactions[index] = await BuildTransactionWithBoth(transaction, ref!);    
+    setFilteredTransactions();
   }
 
-  Future<void> deleteTransaction(String transactionId) async {
+  Future<void> deleteTransaction(model.Transaction transaction) async {
     if (_currentUser == null) throw Exception("User not logged in");
-    await firestore.collection('transaction').doc(transactionId).delete();
-    // Stream will update the list.
+
+    transaction.isDeleted = true;
+    Map<String, dynamic> transactionData = transaction.toJson();
+    transactionData = completeUpdate(transactionData);    
+    await firestore.collection('transaction').doc(transaction.id).update(transactionData);
+    var index = filteredTransactions.indexWhere((b) => b.id == transaction.id);
+    filteredTransactions.removeAt(index);
+
+    setFilteredTransactions();
   }
 
   @override
@@ -123,48 +362,29 @@ class TransactionNotifier extends BaseNotifier {
   }
 
   double get incomesTotal {
-    return 0;
+    return filteredTransactions.where((b) => b.typeTypisiert == model.TransactionType.Income).fold(0.0, (sum, p) => sum + (p.isTransactionDeactivated(selectedMonth) ? 0 : p.getAmount(selectedMonth)));
   }
 
    double get expensesTotal {
-    return 0;
+    return filteredTransactions.where((b) => b.typeTypisiert == model.TransactionType.Expense).fold(0.0, (sum, p) => sum + (p.isTransactionDeactivated(selectedMonth) ? 0 :p.getAmount(selectedMonth)));
   }
 
    double get difference{
-    return 0;
+    return incomesTotal - expensesTotal;
   }
-
-  TransactionsViewModel() {
-    _initializeData();
-  }
-
-  Future<void> _initializeData() async {
-    await Future.wait([
-      _fetchProject(),
-      _fetchUsers(),
-    ]);
-  }
-
-  Future<void> _fetchProject() async {
-    fetchAll('project', Project.fromMap).then((result) async {
-      for (var r in result) {
-        // currentProject = r;
-      }
-    });
-  }
-
-  Future<void> _fetchUsers() async {
-    fetchAll('user', modelUser.User.fromMap).then((result) async {
-      // allUsers = result;
-    });
-  }
-
+  
   bool checkTransactionForMonth(model.Transaction transaction, DateTime selectedMonth) {
+    print(transaction.title);
+
     final bool firstCheck = 
         (transaction.parent == null && transaction.isFixed &&
             (transaction.availableFrom.isSameOrBeforeMonthYear(selectedMonth) &&
             (transaction.availableUntil == null || selectedMonth.isSameOrBeforeMonthYear(transaction.availableUntil!)))) ||
         (!transaction.isFixed && selectedMonth.isSameMonthYear(transaction.availableFrom));
+
+    if(!firstCheck) {
+      return false;
+    }
 
     bool secondCheck = false;
 
@@ -189,13 +409,40 @@ class TransactionNotifier extends BaseNotifier {
     return firstCheck && secondCheck;
   }
 
-  // void selectMonth(DateTime picked) {
-  //   selectedMonth = picked;
-  // }
+  void addDataTransactionStatus({required TransactionStatus status, required model.Transaction transaction, required Null Function() callback}) async {
+   if (_currentUser == null) throw Exception("User not logged in");
 
-  void addDataTransactionStatus({required TransactionStatus status, required Transaction transaction, required Null Function() callback}) {}
+    DocumentReference ref = firestore.collection('transactionStatus').doc(); // Generate ID for payment
+    Map<String, dynamic> statusData = status.toMap();
+    
+    statusData = completeAdd(statusData);
 
-  void deleteDataTransactionStatus({required TransactionStatus status, required Transaction transaction, required Null Function() callback}) {}
+    WriteBatch batch = firestore.batch();
+    batch.set(ref, statusData);
+
+    DocumentReference debtDocRef = firestore.collection('transaction').doc(transaction.id);
+    batch.update(debtDocRef, {
+      'transactionStatusRef': FieldValue.arrayUnion([ref]),
+    });
+    
+    await batch.commit();
+    callback.call();
+    notifyListeners();
+  }
+
+  void deleteDataTransactionStatus({required TransactionStatus status, required model.Transaction transaction, required Null Function() callback}) async {
+      DocumentReference statusRef = firestore.collection('transactionStatus').doc(status.id); // Generate ID for payment
+      DocumentReference debtDocRef = firestore.collection('transaction').doc(transaction.id);
+
+      WriteBatch batch = firestore.batch();
+      batch.delete(statusRef); // Delete the payment
+      batch.update(debtDocRef, { // Update the debt
+        'transactionStatusRef': FieldValue.arrayRemove([transaction.transactionStatusRef])
+      });
+
+    await batch.commit();
+    callback.call();
+  }
 }
 
 extension MonthYearComparison on DateTime {

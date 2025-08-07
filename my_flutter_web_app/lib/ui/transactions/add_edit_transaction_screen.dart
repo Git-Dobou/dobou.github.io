@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:my_flutter_web_app/models/actionResult.dart';
 import 'package:provider/provider.dart';
 import '../../models/transaction.dart' as model;
 import '../../providers/transaction_notifier.dart';
@@ -8,8 +9,9 @@ import './widgets/select_category_field.dart';
 
 class AddEditTransactionScreen extends StatefulWidget {
   final model.Transaction? transactionToEdit;
+  final  Function(Actionresult<model.Transaction>) callback;
 
-  const AddEditTransactionScreen({Key? key, this.transactionToEdit})
+  const AddEditTransactionScreen({Key? key, this.transactionToEdit, required this.callback})
       : super(key: key);
 
   @override
@@ -26,9 +28,9 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
   late TextEditingController _amountController;
   late TextEditingController _noteController;
   DateTime _selectedDate = DateTime.now();
-  DateTime? _selectedDateUntil = DateTime.now();
+  DateTime? _selectedDateUntil;
 
-  String _transactionType = 'Expense'; 
+  String _transactionType = 'expense'; 
   DocumentReference? _selectedCategoryRef;
   bool _isFixed = false;
   String _transactionCycle = 'Monthly'; 
@@ -42,10 +44,10 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
       final transaction = widget.transactionToEdit!;
       _titleController = TextEditingController(text: transaction.title);
       _amountController = TextEditingController(text: transaction.amount.abs().toString());
-      // _noteController = TextEditingController(text: transaction.comment ?? '');
+      _noteController = TextEditingController(text: transaction.comment ?? '');
       _selectedDate = transaction.availableFrom;
       _selectedDateUntil = transaction.availableUntil;
-      _transactionType = transaction.amount >= 0 ? 'income' : 'expense';
+      _transactionType = transaction.type;
       _selectedCategoryRef = transaction.categoryRef;
       _isFixed = transaction.isFixed;
       _transactionCycle = transaction.cyklus; // More robust cycle init
@@ -53,6 +55,8 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
       _titleController = TextEditingController();
       _amountController = TextEditingController();
       _noteController = TextEditingController();
+      _typeController = TextEditingController();
+      _cyklusController = TextEditingController();
     }
   }
 
@@ -64,7 +68,7 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
     super.dispose();
   }
 
-  Future<void> _pickDate(BuildContext context) async {
+  Future<void> _pickDateFrom(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -78,17 +82,33 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
     }
   }
 
+  Future<void> _pickDateUntil(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateUntil,
+      firstDate: _selectedDate,
+      lastDate: DateTime(2101),
+    );
+    if (picked != null && picked != _selectedDateUntil) {
+      setState(() {
+        _selectedDateUntil = picked;
+      });
+    }
+  }
+
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
+
+      final transactionNotifier = Provider.of<TransactionNotifier>(context, listen: false);
+      final scaffoldMessenger = ScaffoldMessenger.of(context); // Capture ScaffoldMessenger
+
+      transactionNotifier.loading(true);
       final title = _titleController.text.trim();
-      final type = _typeController.text.trim();
-      final cyklus = _cyklusController.text.trim();
+      // final type = _typeController.text.trim();
+      // final cyklus = _cyklusController.text.trim();
       final amountText = _amountController.text.trim();
       final note = _noteController.text.trim();
       double amount = double.tryParse(amountText) ?? 0.0;
-      if (_transactionType == 'Expense') {
-        amount = -amount; 
-      }
 
       if (_selectedCategoryRef == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -99,25 +119,22 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
       final transactionData = model.Transaction(
         id: _isEditing ? widget.transactionToEdit!.id : '', 
         title: title,
-        type: type,
-        cyklus: cyklus,
+        type: _transactionType,
+        cyklus: _transactionCycle,
+        comment: note,
         amount: amount,
         availableFrom: _selectedDate,
         availableUntil: _selectedDateUntil,
         categoryRef: _selectedCategoryRef!,
         isFixed: _isFixed,
         currency: _isEditing ? widget.transactionToEdit!.currency : null, 
-        isDeleted: _isEditing ? widget.transactionToEdit!.isDeleted : false,
         parentRef: _isEditing ? widget.transactionToEdit!.parentRef : null,
         subTransactionsRef: _isEditing ? widget.transactionToEdit!.subTransactionsRef : null,
         transactionNewAmountsRef: _isEditing ? widget.transactionToEdit!.transactionNewAmountsRef : null,
         transactionStatusRef: _isEditing ? widget.transactionToEdit!.transactionStatusRef : null,
-        timestamp: _isEditing ? widget.transactionToEdit!.timestamp : null, 
       );
 
-      final transactionNotifier = Provider.of<TransactionNotifier>(context, listen: false);
-      final scaffoldMessenger = ScaffoldMessenger.of(context); // Capture ScaffoldMessenger
-
+      
       Future<void> futureAction;
       if (_isEditing) {
         futureAction = transactionNotifier.updateTransaction(transactionData);
@@ -132,11 +149,14 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
             backgroundColor: Colors.green,
           ),
         );
+        transactionNotifier.loading(true);
         Navigator.of(context).pop();
       }).catchError((error) {
         scaffoldMessenger.showSnackBar(
             SnackBar(content: Text('Failed to ${_isEditing ? "update" : "add"} transaction: $error'), backgroundColor: Colors.redAccent));
       });
+
+      transactionNotifier.loading(false);
     }
   }
 
@@ -190,30 +210,7 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
                 },
               ),
               SizedBox(height: 16),
-              ListTile(
-                contentPadding: EdgeInsets.zero, // Aligns with TextFormField
-                title: Text("From: ${DateFormat.yMd().format(_selectedDate)}", style: textTheme.bodyLarge),
-                trailing: Icon(Icons.calendar_today),
-                onTap: () => _pickDate(context),
-              ),
-              
-              ListTile(
-                contentPadding: EdgeInsets.zero, // Aligns with TextFormField
-                title: Text("Until: ${DateFormat.yMd().format(_selectedDateUntil ?? DateTime.now())}", style: textTheme.bodyLarge),
-                trailing: Icon(Icons.calendar_today),
-                onTap: () => _pickDate(context),
-              ),
 
-              SizedBox(height: 16),
-              SelectCategoryField(
-                initialValue: _selectedCategoryRef,
-                onChanged: (DocumentReference? newCategoryRef) {
-                  setState(() {
-                    _selectedCategoryRef = newCategoryRef;
-                  });
-                },
-              ),
-              SizedBox(height: 16),
               SwitchListTile(
                 title: Text('Fixed Transaction (Recurring)', style: textTheme.bodyLarge),
                 value: _isFixed,
@@ -224,13 +221,21 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
                 },
                 contentPadding: EdgeInsets.zero,
               ),
+
+              ListTile(
+                contentPadding: EdgeInsets.zero, // Aligns with TextFormField
+                title: Text("From: ${DateFormat.yMd().format(_selectedDate)}", style: textTheme.bodyLarge),
+                trailing: Icon(Icons.calendar_today),
+                onTap: () => _pickDateFrom(context),
+              ),
+              
               if (_isFixed)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
                   child: DropdownButtonFormField<String>(
                     value: _transactionCycle,
                     decoration: InputDecoration(labelText: 'Cycle'),
-                    items: ['monthly', 'quarterly', 'yearly'].map((String value) {
+                    items: model.TransactionCyklus.values.map((v) => v.name).map((String value) {
                       return DropdownMenuItem<String>(
                         value: value,
                         child: Text(value[0].toUpperCase() + value.substring(1), style: textTheme.bodyLarge),
@@ -243,6 +248,26 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
                     },
                   ),
                 ),
+              
+              if(_isFixed)
+                ListTile(
+                contentPadding: EdgeInsets.zero, // Aligns with TextFormField
+                title: Text("Until: ${DateFormat.yMd().format(_selectedDateUntil ?? DateTime.now())}", style: textTheme.bodyLarge),
+                trailing: Icon(Icons.calendar_today),
+                onTap: () => _pickDateUntil(context),
+              ),
+
+              SizedBox(height: 16),
+              SelectCategoryField(
+                initialValue: _selectedCategoryRef,
+                onChanged: (DocumentReference? newCategoryRef) {
+                  setState(() {
+                    _selectedCategoryRef = newCategoryRef;
+                  });
+                },
+              ),
+              SizedBox(height: 16),
+
               TextFormField(
                 controller: _noteController,
                 decoration: InputDecoration(labelText: 'Note (Optional)'),

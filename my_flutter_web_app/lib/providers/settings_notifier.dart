@@ -25,6 +25,8 @@ class SettingsNotifier with ChangeNotifier {
 
   String get appName => _settings['appName'] ?? 'FinanzApp';
   String get currency => _settings['currency'] ?? 'EUR';
+  String get font => _settings['font'] ?? 'Verdana';
+
   // Add other getters as needed: fontName, fontSize, defaultCategoryId, useFaceId, beginMonth etc.
 
   bool get isLoading => _isLoading;
@@ -83,7 +85,7 @@ class SettingsNotifier with ChangeNotifier {
       // ... add other defaults as necessary
 
     } catch (e) {
-      print("Error loading settings: \$e");
+      print("Error loading settings: $e");
       // On error, apply default settings to ensure app stability
       _settings = {
         'theme': 'system',
@@ -103,11 +105,12 @@ class SettingsNotifier with ChangeNotifier {
     // notifyListeners(); // Potentially too many listeners notifications for rapid changes
 
     try {
-      await _firestore.collection('users').doc(_user!.uid).collection('settings').doc(module).set({'value': value});
+      await _firestore.collection('user').doc(_user!.uid)
+                      .collection('setting').doc(module).set({'value': value});
       _settings[module] = value;
       notifyListeners(); // Notify after successful save and internal state update
     } catch (e) {
-      print("Error saving setting \$module: \$e");
+      print("Error saving setting $module: $e");
     }
     // _isLoading = false; 
     // notifyListeners();

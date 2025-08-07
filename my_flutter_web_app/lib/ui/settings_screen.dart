@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_flutter_web_app/ui/categories/category_list_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_notifier.dart';
 
@@ -54,22 +55,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }).catchError((error) {
       _scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(content: Text('Error saving App Name: \$error'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text('Error saving App Name: $error'), backgroundColor: Colors.redAccent),
       );
     });
     FocusScope.of(context).unfocus();
   }
+
+    void _setFont(String? newFont) {
+    
+  }
+
 
   void _setCurrency(String? newCurrency) {
     if (newCurrency != null) {
       final settingsNotifier = Provider.of<SettingsNotifier>(context, listen: false);
       settingsNotifier.setCurrency(newCurrency).then((_) {
         _scaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(content: Text('Currency updated to \$newCurrency'), backgroundColor: Colors.green),
+          SnackBar(content: Text('Currency updated to $newCurrency'), backgroundColor: Colors.green),
         );
       }).catchError((error) {
         _scaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(content: Text('Error updating currency: \$error'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Error updating currency: $error'), backgroundColor: Colors.redAccent),
         );
       });
     }
@@ -83,7 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }).catchError((error) {
         _scaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(content: Text('Error updating theme: \$error'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Error updating theme: $error'), backgroundColor: Colors.redAccent),
         );
       });
   }
@@ -143,8 +149,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: _setCurrency,
                     decoration: InputDecoration(), // Will pick up global theme
                   ),
+                  
+                  SizedBox(height: 24),
+                  Text('Font', style: textTheme.titleLarge),
+                  SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: settingsNotifier.font,
+                    items: ['Arial', 'Fortana', 'Verdana'].map((String value) {
+                      return DropdownMenuItem<String>(value: value, child: Text(value, style: textTheme.bodyLarge));
+                    }).toList(),
+                    onChanged: _setFont,
+                    decoration: InputDecoration(), // Will pick up global theme
+                  ),
                   SizedBox(height: 30),
-                  Divider(),
+                  Card(
+                    child: ListTile(
+                      title: const Text('Manage categories'),
+                       onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CategoryListScreen(),
+                          ),
+                        );
+                      },
+                      trailing: Icon(Icons.arrow_right),
+                    ),
+                  )
                   // Removed old navigation buttons
                 ],
               ),

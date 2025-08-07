@@ -7,12 +7,21 @@ import '../../models/debt.dart' as model_debt;
 import './add_edit_debt_screen.dart';
 import './debt_detail_screen.dart';
 
-class DebtListScreen extends StatelessWidget {
+class DebtListScreen extends StatefulWidget {
   const DebtListScreen({Key? key}) : super(key: key);
+
+  @override
+  _DebtListScreenState createState() =>
+      _DebtListScreenState();
+
+}
+
+class _DebtListScreenState extends State<DebtListScreen> {
 
   @override
   Widget build(BuildContext context) {
     final authNotifier = Provider.of<AuthNotifier>(context);
+    final debtNotifier = Provider.of<DebtNotifier>(context);
     final textTheme = Theme.of(context).textTheme;
     // final colorScheme = Theme.of(context).colorScheme;
 
@@ -26,6 +35,7 @@ class DebtListScreen extends StatelessWidget {
     
     final currencyFormat = NumberFormat.simpleCurrency(locale: 'de_DE'); 
     // final debtNotifier = Provider.of<DebtNotifier>(context); // Not needed here for just triggering fetch
+    String searchText = '';
 
     return Scaffold(
       appBar: AppBar( // Themed
@@ -73,7 +83,7 @@ class DebtListScreen extends StatelessWidget {
               String debtStatusText;
               Color statusColor;
 
-              if (debt.isPayed ?? false) {
+              if (debt.isPayed) {
                 debtStatusText = "Paid";
                 statusColor = Colors.green[700]!;
               } else if (remainingAmount <= 0) {
@@ -87,30 +97,45 @@ class DebtListScreen extends StatelessWidget {
                 statusColor = Colors.blue[700]!;
               }
 
+              double currentSavedAmount = debt.payedAmount;
+              double progress = (currentSavedAmount / debt.amount).clamp(0.0, 1.0);
+
               return Card( // Themed
                 child: ListTile( // Themed
                   leading: Icon(Icons.receipt_long_outlined, size: 30), // Example icon
-                  title: Text(debt.creditor, style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  title: Text(
+                    debt.creditor,
+                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Total: ${currencyFormat.format(debt.amount)}", style: textTheme.bodySmall),
-                      Text("Paid: ${currencyFormat.format(paidAmount)}", style: textTheme.bodySmall?.copyWith(color: Colors.green[700])),
-                      Text("Remaining: ${currencyFormat.format(remainingAmount)}", 
-                           style: textTheme.bodySmall?.copyWith(color: remainingAmount > 0 ? Colors.orange[700] : Colors.green[700])),
-                      if (debt.dueDate != null)
-                        Text("Due: ${DateFormat.yMd().format(debt.dueDate!)}", 
-                             style: textTheme.bodySmall?.copyWith(color: isOverdue ? Colors.red[700] : null)),
-                      Text("Status: $debtStatusText", style: textTheme.bodySmall?.copyWith(color: statusColor, fontStyle: FontStyle.italic)),
+                    children: [ 
+                      Text("Total: ${currencyFormat.format(debt.amount)}", style: textTheme.bodyLarge),
+                      ClipRRect(
+                          borderRadius: BorderRadius.circular(4.0),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 8,
+                            backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
+                            valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text("Status: $debtStatusText", style: textTheme.bodySmall?.copyWith(color: statusColor, fontStyle: FontStyle.italic))
                     ],
                   ),
-                  trailing: Icon(Icons.chevron_right), // Themed by ListTileTheme
                   isThreeLine: true, 
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => DebtDetailScreen(debt: debt),
+                        builder: (context) => DebtDetailScreen(debt: debt, callback: (result) {
+                          setState(() {
+                            debtNotifier.debts.removeWhere((b) => b.id == debt.id);
+                          });
+                        },),
                       ),
                     );
                   },
@@ -124,7 +149,11 @@ class DebtListScreen extends StatelessWidget {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => AddEditDebtScreen()),
+            MaterialPageRoute(builder: (context) => AddEditDebtScreen(callback: (result) {
+              setState(() {
+                debtNotifier.debts.add(result.data!);
+              });
+            },)),
           );
         },
         child: Icon(Icons.add),

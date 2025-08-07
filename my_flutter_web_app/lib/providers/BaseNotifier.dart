@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:my_flutter_web_app/providers/auth_notifier.dart';
 import '../models/baseModel.dart';
 import 'dart:convert';
 
@@ -12,6 +13,8 @@ class BaseNotifier extends ChangeNotifier {
   
   final FirebaseAuth _auth = FirebaseAuth.instance;
   FirebaseAuth get auth => _auth;
+  
+
   // Future<bool> encryptAndSave<T>(T data, String collection) async {
   //   try {
   //     final jsonString = jsonEncode(data);
@@ -41,6 +44,36 @@ class BaseNotifier extends ChangeNotifier {
   //   }
   // }
 
+Map<String, dynamic> completeGeneral(Map<String, dynamic> map) {
+  // map['clientId'] = AuthNotifier.instance.project!.clientId;
+  map['clientId'] = '1735421-1353-53';
+
+  return map;
+}
+
+Map<String, dynamic> completeAdd(Map<String, dynamic> map) {
+  map['creationTime'] = DateTime.now();
+  map['lastUpdateTime'] = DateTime.now();
+  map = completeGeneral(map);
+  return map;
+}
+
+Map<String, dynamic> completeUpdate(Map<String, dynamic> map) {
+  map['lastUpdateTime'] = DateTime.now();
+  map = completeGeneral(map);
+  return map;
+}
+
+Map<String, dynamic> completeDelete(Map<String, dynamic> map) {
+  map['isDeleted'] = DateTime.now();
+  map = completeGeneral(map);
+  return map;
+}
+
+Future<DocumentReference?> getRef(String id, String collection) async {
+  return _firestore.collection(collection).doc(id);
+}
+
 Future<T?> readRef<T extends BaseModel>(
   DocumentReference? ref,
   T Function(Map<String, dynamic> map, String id) fromMapFn,
@@ -53,10 +86,10 @@ Future<T?> readRef<T extends BaseModel>(
   try {
     final snapshot = await ref.get();
 
-    if (!snapshot.exists) { 
-      print("readRef: snapshot existiert nicht");
-      return null;
-    }
+  if (!snapshot.exists) {
+    print("readRef: snapshot existiert nicht: ${ref.path}");
+    return null;
+  }
 
     return BaseModel.fromSnapshot<T>(snapshot, fromMapFn);
   } catch (e, stack) {

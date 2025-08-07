@@ -46,7 +46,7 @@ class NotificationService {
   // void onDidReceiveNotificationResponse(NotificationResponse notificationResponse) async {
   //   final String? payload = notificationResponse.payload;
   //   if (notificationResponse.payload != null) {
-  //     print('notification payload: \$payload');
+  //     print('notification payload: $payload');
   //   }
   //   // Example: navigate to a specific screen based on payload
   //   // await Navigator.push(context, MaterialPageRoute<void>(builder: (context) => SecondScreen(payload)));
@@ -65,7 +65,7 @@ class NotificationService {
     //     flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
     //         AndroidFlutterLocalNotificationsPlugin>();
     // final bool? granted = await androidImplementation?.requestNotificationsPermission();
-    // print("Android Notification Permission Granted: \$granted");
+    // print("Android Notification Permission Granted: $granted");
     // }
   }
 
@@ -80,7 +80,7 @@ class NotificationService {
       notificationDetails,
       payload: payload,
     );
-    print("Notification shown: id=\$id, title=\$title");
+    print("Notification shown: id=$id, title=$title");
   }
 
   Future<void> scheduleTestNotification({
@@ -97,14 +97,14 @@ class NotificationService {
     final now = DateTime.now();
     if (scheduledDateTime.isAfter(now)) {
       final delay = scheduledDateTime.difference(now);
-      print("Web: Notification for id=\$id, title='\$title' is scheduled in \$delay. It will show if app tab is active.");
+      print("Web: Notification for id=$id, title='$title' is scheduled in $delay. It will show if app tab is active.");
       Future.delayed(delay, () {
         // Re-check if app context is still valid if this were a long-lived service
         showNotification(id, title, body, payload);
       });
     } else {
       // If scheduled time is past or now, show immediately for test purposes
-      print("Web: Notification for id=\$id, title='\$title' is past due, showing immediately.");
+      print("Web: Notification for id=$id, title='$title' is past due, showing immediately.");
       await showNotification(id, title, body, payload);
     }
   }

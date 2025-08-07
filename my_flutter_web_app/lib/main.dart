@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:my_flutter_web_app/ui/base/auth_screen.dart';
 import 'package:provider/provider.dart';
 
 import 'package:my_flutter_web_app/providers/auth_notifier.dart';
@@ -25,16 +27,22 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: firebaseOptions);
   await NotificationService().init(); // Initialize NotificationService
-  // await NotificationService().requestPermissions(); // Optional: request permissions explicitly
+
+  await FirebaseFirestore.instance.clearPersistence();
+  // await FirebaseFirestore.instance.terminate();
+  // await FirebaseFirestore.instance.enablePersistence(); // Optional
   
+  DebtNotifier debtNotifier = DebtNotifier();
+  TransactionNotifier transactionNotifier = TransactionNotifier(debtNotifier: debtNotifier);
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthNotifier()),
         ChangeNotifierProvider(create: (_) => SettingsNotifier()),
         ChangeNotifierProvider(create: (_) => CategoryNotifier()),
-        ChangeNotifierProvider(create: (_) => TransactionNotifier()),
-        ChangeNotifierProvider(create: (_) => DebtNotifier()),
+        ChangeNotifierProvider(create: (_) => debtNotifier),
+        ChangeNotifierProvider(create: (_) => transactionNotifier),
       ],
       child: MyApp(),
     ),
@@ -74,6 +82,7 @@ ThemeData _buildTheme(ColorScheme colorScheme) {
   return ThemeData(
     colorScheme: colorScheme,
     useMaterial3: true, 
+    fontFamily: 'Verdana',
     appBarTheme: AppBarTheme(
       backgroundColor: colorScheme.primary,
       foregroundColor: colorScheme.onPrimary, 
@@ -98,7 +107,8 @@ ThemeData _buildTheme(ColorScheme colorScheme) {
       ),
     ),
     cardTheme: CardTheme(
-      elevation: 2.0,
+      elevation: 10.0,
+      shadowColor: Colors.black.withOpacity(0.6), // wichtig für Dark Mode
       margin: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
     ),
@@ -151,7 +161,7 @@ class MyApp extends StatelessWidget {
       themeMode: settingsNotifier.themeMode,
       theme: _buildTheme(lightColorScheme),
       darkTheme: _buildTheme(darkColorScheme),
-      home: AuthPage(),
+      home: AuthScreen(),
     );
   }
 }
@@ -175,7 +185,7 @@ class AuthPage extends StatelessWidget {
               SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => authNotifier.signInAnonymously(),
-                child: Text('Sign In Anonymously'),
+                child: AuthScreen(),
               )
             ],
           ),

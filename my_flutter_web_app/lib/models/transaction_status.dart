@@ -3,8 +3,8 @@ import 'package:my_flutter_web_app/models/baseModel.dart';
 enum TransactionStatusType { Payed, NotPayed, Deactivated, Unknown }
 
 class TransactionStatus extends BaseModel {
-  final String status;
-  final DateTime date;
+  String status;
+  DateTime date;
 
   TransactionStatus({
     String? id,
@@ -32,7 +32,14 @@ class TransactionStatus extends BaseModel {
         'lastUpdateTime': lastUpdateTime,
       };
 
-  TransactionStatusType? get statusTypisiert => TransactionStatusType.values.firstWhere(
+  TransactionStatusType get statusTypisiert {
+    return TransactionStatusType.values.firstWhere(
       (e) => e.name.toLowerCase() == status.toLowerCase(),
-      orElse: () => TransactionStatusType.NotPayed);
+      orElse: () => TransactionStatusType.Unknown,
+    );
+  }
+
+  set statusTypisiert(TransactionStatusType value) {
+    status = value.name;
+  }
 }

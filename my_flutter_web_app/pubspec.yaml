@@ -26,6 +26,9 @@ dependencies:
   # Default Cupertino Icons
   cupertino_icons: ^1.0.6
   flutter_local_notifications: ^17.0.0 # Check for latest version
+  shared_preferences: ^2.5.3
+  shimmer: ^3.0.0
+  jiffy: ^6.3.2
 
 dev_dependencies:
   flutter_test:

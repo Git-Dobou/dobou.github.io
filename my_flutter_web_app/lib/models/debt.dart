@@ -26,7 +26,7 @@ extension DebtModelExtensions on Debt {
     }
   }
 
-  PaymentMethod get paymentMethodTyped {
+  PaymentMethod get paymentMethodTypisiert {
     switch (paymentMethod.toLowerCase()) {
       case 'paypal':
         return PaymentMethod.paypal;
@@ -37,6 +37,22 @@ extension DebtModelExtensions on Debt {
       default:
         return PaymentMethod.none;
     }
+  }
+  
+  double get paidInterest {
+    if ((interest ?? 0) <= 0) return 0;
+
+    double totalInterest = 0;
+    double remaining = amount;
+
+    for (var p in payments) {
+      double currentInterest = remaining * ((interest ?? 0) / 100);
+      totalInterest += currentInterest;
+      remaining += currentInterest; // Schuld wächst durch Zinsen
+      remaining -= p.amount;        // Zahlung wird abgezogen
+    }
+
+    return totalInterest;
   }
 
   double get restAmount {
@@ -51,19 +67,12 @@ extension DebtModelExtensions on Debt {
   }
 
   double get payedAmount {
-  return payments.fold(0.0, (sum, payment) => sum + (payment.amount));
+    return payments.fold(0.0, (sum, payment) => sum + (payment.amount));
   }
 
   int get restMonth {
-    switch (paymentModeTyped) {
-      case PaymentMode.installment:
-        final count = restAmount / paymentAmount;
-        return count.isFinite ? count.ceil() : 0;
-      case PaymentMode.oneTime:
-        return 1;
-      case PaymentMode.none:
-        return 0;
-    }
+    final count = restAmount / (paymentAmount == 0 ? amount : paymentAmount);
+    return count.isFinite ? count.ceil() : 0;
   }
 
   int get payMonth {
@@ -109,7 +118,7 @@ class Debt extends BaseModel {
   final double paymentAmount;
   final double? interest;
   final DateTime firstPaymentDate;
-  final DateTime dueDate;
+  final DateTime? dueDate;
   final String? iban;
   final String? bic;
   final String? bankName;
@@ -122,7 +131,7 @@ class Debt extends BaseModel {
   final int? position;
   final List<DocumentReference?> paymentRefs;
   final List<String> datas;
-  final DocumentReference? transactionRef;
+  DocumentReference? transactionRef;
 
   List<Payment> payments;
   transaction_model.Transaction? transaction;
@@ -156,37 +165,7 @@ class Debt extends BaseModel {
     this.payments = const [],
   }) : super(id: id, clientId: clientId, creationTime: creationTime, lastUpdateTime: lastUpdateTime);
 
-  factory Debt.fromMap(Map<String, dynamic> map, String docId) { 
-    try {
-var clientId= map['clientId']; var
-        creditor= map['creditor'] ?? ''; var
-        amount= (map['amount'] ?? 0).toDouble(); var
-        paymentMode= map['paymentMode'] ?? ''; var
-        paymentMethod= map['paymentMethod'] ?? ''; var
-        paymentAmount= (map['paymentAmount'] ?? 0).toDouble(); var
-        interest= (map['interest'] ?? 0).toDouble(); var
-        firstPaymentDate= (map['firstPaymentDate'] as Timestamp).toDate(); var
-        dueDate= (map['dueDate'] as Timestamp).toDate(); var
-        iban= map['iban']; var
-        bic= map['bic']; var
-        bankName= map['bankName']; var
-        bankAccountHolder= map['bankAcountHolder']; var
-        paypalEmail= map['paypalEmail']; var
-        reason= map['reason']; var
-        comment= map['comment']; var
-        currency= map['currency']; var
-        addPaymentAuto= map['addPaymentAuto'] ?? false; var
-        position= map['position']; var
-        paymentRefs= List<DocumentReference?>.from(map['paymentRefs'] ?? []); var
-        datas= List<String>.from(map['datas'] ?? []); var
-        transactionRef= map['transactionRef']; var
-        creationTime= (map['creationTime'] as Timestamp?)?.toDate(); var
-        lastUpdateTime= (map['lastUpdateTime'] as Timestamp?)?.toDate();
-    }
-    catch (ex) {
-      print(docId);
-    }
-
+  factory Debt.fromMap(Map<String, dynamic> map, String docId) {
     return Debt(
         id: docId,
         clientId: map['clientId'],
@@ -197,13 +176,13 @@ var clientId= map['clientId']; var
         paymentAmount: (map['paymentAmount'] ?? 0).toDouble(),
         interest: (map['interest'] ?? 0).toDouble(),
         firstPaymentDate: (map['firstPaymentDate'] as Timestamp).toDate(),
-        dueDate: (map['dueDate'] as Timestamp).toDate(),
-        iban: map['iban'],
-        bic: map['bic'],
-        bankName: map['bankName'],
-        bankAccountHolder: map['bankAcountHolder'],
-        paypalEmail: map['paypalEmail'],
-        reason: map['reason'],
+        dueDate: (map['dueDate'] as Timestamp?)?.toDate(),
+        iban: map['iban'] as String?,
+        bic: map['bic'] as String?,
+        bankName: map['bankName'] as String?,
+        bankAccountHolder: map['bankAcountHolder']  as String?,
+        paypalEmail: map['paypalEmail'] as String?,
+        reason: map['reason'] as String?,
         comment: map['comment'],
         currency: map['currency'],
         addPaymentAuto: map['addPaymentAuto'] ?? false,

@@ -45,21 +45,22 @@ class _AddEditCategoryDialogState extends State<AddEditCategoryDialog> {
       final icon = _iconController.text.trim();
 
       try {
+        var category = model.Category(id: widget.category?.id ?? '', name: name, icon: icon);
         if (_isEditing) {
-          await categoryNotifier.updateCategory(widget.category!.id!, name, icon);
+          await categoryNotifier.updateCategory(category);
           scaffoldMessenger.showSnackBar(
-            SnackBar(content: Text('Category "\$name" updated successfully!'), backgroundColor: Colors.green),
+            SnackBar(content: Text('Category "$name" updated successfully!'), backgroundColor: Colors.green),
           );
         } else {
-          await categoryNotifier.addCategory(name, icon);
+          await categoryNotifier.addCategory(category);
           scaffoldMessenger.showSnackBar(
-            SnackBar(content: Text('Category "\$name" added successfully!'), backgroundColor: Colors.green),
+            SnackBar(content: Text('Category "$name" added successfully!'), backgroundColor: Colors.green),
           );
         }
         navigator.pop(); // Close the dialog on success
       } catch (e) {
         scaffoldMessenger.showSnackBar(
-          SnackBar(content: Text('Error: \$e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.redAccent),
         );
       } finally {
         if (mounted) {
@@ -94,17 +95,7 @@ class _AddEditCategoryDialogState extends State<AddEditCategoryDialog> {
               },
             ),
             SizedBox(height: 16),
-            TextFormField(
-              controller: _iconController,
-              decoration: InputDecoration(labelText: 'Icon Name/Code (e.g., work, home)'),
-              style: textTheme.bodyLarge,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter an icon name/code';
-                }
-                return null;
-              },
-            ),
+            SelectNewCategoryView()
           ],
         ),
       ),
@@ -119,6 +110,129 @@ class _AddEditCategoryDialogState extends State<AddEditCategoryDialog> {
           child: _isSaving ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary)) : Text(_isEditing ? 'Save Changes' : 'Add Category'),
         ),
       ],
+    );
+  }
+}
+
+class SelectNewCategoryView extends StatefulWidget {
+  const SelectNewCategoryView({super.key});
+
+  @override
+  State<SelectNewCategoryView> createState() => _SelectNewCategoryViewState();
+}
+
+class _SelectNewCategoryViewState extends State<SelectNewCategoryView> {
+  final List<String> _icons = [
+    'add',
+    'home',
+    'wallet',
+    'shopping_cart',
+    'restaurant',
+    'school',
+    'fitness_center',
+    'flight',
+    'directions_car',
+    'healing',
+    'local_movies',
+    'pets',
+    'sports_soccer',
+  ];
+
+  final Map<String, IconData> iconsMap = {
+    'add': Icons.add,
+    'home': Icons.home,
+    'wallet': Icons.account_balance_wallet,
+    'shopping_cart': Icons.shopping_cart,
+    'restaurant': Icons.restaurant,
+    'school': Icons.school,
+    'fitness_center': Icons.fitness_center,
+    'flight': Icons.flight,
+    'directions_car': Icons.directions_car,
+    'healing': Icons.healing,
+    'local_movies': Icons.local_movies,
+    'pets': Icons.pets,
+    'sports_soccer': Icons.sports_soccer,
+  };
+
+  String? _selectedIconName;
+
+  void _showIconDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Wähle ein Symbol'),
+        content: SizedBox(
+          height: 200, // 🔥 WICHTIG: Höhe definieren
+          width: double.maxFinite,
+          child: GridView.builder(
+            itemCount: _icons.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+            ),
+            itemBuilder: (context, index) {
+              final iconName = _icons[index];
+              final isSelected = iconName == _selectedIconName;
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedIconName = iconName;
+                  });
+                  Navigator.of(context).pop();
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected ? Colors.blue.shade100 : Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isSelected ? Colors.blue : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: Icon(
+                    iconsMap[iconName],
+                    color: isSelected ? Colors.blue : Colors.black54,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Kategorie wählen'),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_selectedIconName != null)
+              Icon(
+                iconsMap[_selectedIconName]!,
+                size: 48,
+                color: Colors.blue,
+              ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _showIconDialog,
+              child: const Text('Symbol auswählen'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

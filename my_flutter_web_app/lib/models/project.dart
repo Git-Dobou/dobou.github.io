@@ -5,6 +5,7 @@ import 'package:my_flutter_web_app/models/user.dart';
 class Project extends BaseModel {
   final String name;
   final String description;
+  final bool active;
   final String projectIdentification;
   final bool debtTabVisible;
   final bool economizeTabVisible;
@@ -19,6 +20,7 @@ class Project extends BaseModel {
     DateTime? creationTime,
     DateTime? lastUpdateTime,
     required this.name,
+    required this.active,
     required this.description,
     required this.projectIdentification,
     this.debtTabVisible = false,
@@ -32,6 +34,7 @@ class Project extends BaseModel {
         id: docId,
         clientId: map['clientId'],
         name: map['name'] ?? '',
+        active: map['active'] ?? false,
         description: map['description'] ?? '',
         projectIdentification: map['projectIdentification'] ?? '',
         debtTabVisible: map['debtTabVisible'] ?? false,
@@ -46,6 +49,7 @@ class Project extends BaseModel {
   Map<String, dynamic> toMap() => {
         'name': name,
         'description': description,
+        'active': active,
         'projectIdentification': projectIdentification,
         'debtTabVisible': debtTabVisible,
         'economizeTabVisible': economizeTabVisible,

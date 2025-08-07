@@ -1,5 +1,8 @@
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:my_flutter_web_app/models/actionResult.dart';
+import 'package:my_flutter_web_app/models/payment.dart';
 import 'package:provider/provider.dart';
 import '../../models/debt.dart' as model_debt;
 import '../../providers/debt_notifier.dart';
@@ -10,10 +13,24 @@ import './add_payment_dialog.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '../../services/notification_service.dart'; // Import NotificationService
 
-class DebtDetailScreen extends StatelessWidget {
+class DebtDetailScreen extends StatefulWidget {
   final model_debt.Debt debt;
+  final  Function(Actionresult<model_debt.Debt>) callback;
 
-  const DebtDetailScreen({Key? key, required this.debt}) : super(key: key);
+  const DebtDetailScreen({Key? key, required this.debt, required this.callback}) : super(key: key);  
+
+  @override
+  _DebtDetailScreenState createState() => _DebtDetailScreenState();
+}
+
+class _DebtDetailScreenState extends State<DebtDetailScreen> {
+  late model_debt.Debt debt;
+
+      @override
+  void initState() {
+    super.initState();
+    debt = widget.debt;
+  }
 
   Widget _buildDetailRow(BuildContext context, String label, String? value, {bool isAmount = false, Color? amountColor}) {
     final textTheme = Theme.of(context).textTheme;
@@ -38,15 +55,17 @@ class DebtDetailScreen extends StatelessWidget {
     final currencyFormat = NumberFormat.simpleCurrency(locale: 'de_DE'); 
     final dateFormat = DateFormat.yMMMMd();
     final debtNotifier = Provider.of<DebtNotifier>(context, listen: false);
-    final categoryNotifier = Provider.of<CategoryNotifier>(context, listen: false);
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
-    bool isOverdue = debt.dueDate.isBefore(DateTime.now()) && !debt.isPayed;
+    bool isOverdue = false;
+    if(debt.dueDate != null) {
+      isOverdue = debt.dueDate!.isBefore(DateTime.now()) && !debt.isPayed;
+    }
     String debtStatusText;
     Color statusColor;
 
-    if (debt.isPayed ?? false) {
+    if (debt.isPayed) {
       debtStatusText = "Paid";
       statusColor = Colors.green[700]!;
     } else if (debt.restAmount <= 0) {
@@ -72,7 +91,7 @@ class DebtDetailScreen extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => AddEditDebtScreen(debtToEdit: debt),
+                  builder: (context) => AddEditDebtScreen(debtToEdit: debt, callback: (_) {}),
                 ),
               );
             },
@@ -100,6 +119,8 @@ class DebtDetailScreen extends StatelessWidget {
                              scaffoldMessenger.showSnackBar(
                                 SnackBar(content: Text('Debt "${debt.creditor}" deleted.'), backgroundColor: Colors.green)
                              );
+
+                             widget.callback.call(Actionresult(actionresultEnum: ActionresultEnum.delete, data: widget.debt));
                              navigator.pop(); 
                              rootNavigator.pop(); 
                           }).catchError((error){
@@ -136,6 +157,8 @@ class DebtDetailScreen extends StatelessWidget {
                     Divider(),
                     _buildDetailRow(context, 'Total Amount', currencyFormat.format(debt.amount)),
                     _buildDetailRow(context, 'Amount Paid', currencyFormat.format(debt.payedAmount), isAmount: true, amountColor: Colors.green[700]),
+                    if(debt.interest != null)
+                      _buildDetailRow(context, 'Interest Paid', currencyFormat.format(debt.paidInterest), isAmount: true, amountColor: Colors.green[700]),
                     _buildDetailRow(context, 'Remaining', currencyFormat.format(debt.restAmount), isAmount: true, amountColor: debt.restAmount > 0 ? Colors.orange[700] : Colors.green[700]),
                     if (debt.amount > 0) 
                         Padding(
@@ -150,10 +173,24 @@ class DebtDetailScreen extends StatelessWidget {
                               ),
                             ),
                         ),
+
+                    if(debt.paymentModeTyped == model_debt.PaymentMode.installment)
+                      _buildDetailRow(context, 'Payment Amount', currencyFormat.format(debt.paymentAmount)),
+
+                    _buildDetailRow(context, 'First Paymentdate', dateFormat.format(debt.firstPaymentDate)),
                     _buildDetailRow(context, 'Status', debtStatusText, amountColor: statusColor),
                     _buildDetailRow(context, 'Category', debt.transaction?.category?.name),
                     _buildDetailRow(context, 'Initial Date', dateFormat.format(debt.firstPaymentDate)),
-                    _buildDetailRow(context, 'Due Date', dateFormat.format(debt.dueDate!)),
+
+                    if(debt.dueDate != null)
+                      _buildDetailRow(context, 'Due Date', dateFormat.format(debt.dueDate!)),
+
+                    if(debt.paymentMethodTypisiert == model_debt.PaymentMethod.transfer)
+                      _buildTransafertDetail(context, debt),
+
+                    if(debt.paymentMethodTypisiert == model_debt.PaymentMethod.paypal)
+                      _buildPayPalDetail(context, debt),
+
                   ],
                 ),
               )
@@ -176,7 +213,12 @@ class DebtDetailScreen extends StatelessWidget {
                           onPressed: () {
                             showDialog(
                                 context: context,
-                                builder: (_) => AddPaymentDialog(debt: debt)
+                                barrierDismissible: false,
+                                builder: (_) => AddPaymentDialog(debt: debt, callback: (payment) {
+                                  setState(() {
+                                    debt.payments.add(payment);
+                                  });
+                                })
                             );
                           },
                         ),
@@ -214,31 +256,107 @@ class DebtDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPaymentsList(BuildContext context, model_debt.Debt debt) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    if (debt.paymentRefs == null || debt.paymentRefs!.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
-        child: Center(child: Text('No payments recorded yet.', style: textTheme.bodyMedium)),
-      );
+      int _currentPage = 1;
+    final int _itemsPerPage = 10;
+
+    List<Payment> _paginatedPayments(model_debt.Debt debt) {
+      return debt.payments.take(_currentPage * _itemsPerPage).toList();
     }
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: NeverScrollableScrollPhysics(),
-      itemCount: debt.payments.length,
-      itemBuilder: (context, index) {
-        final payment = debt.payments[index];
-        return Card(
-          elevation: 1.0,
-          margin: const EdgeInsets.symmetric(vertical: 4.0),
-          child: ListTile(
-            leading: Icon(Icons.payment, color: colorScheme.secondary),
-            title: Text('${payment.amount} ${debt.currency ?? 'EUR'} : ${payment.date}', style: textTheme.bodyMedium),
-            // TODO: Add delete payment button here if needed, calling DebtNotifier
-          ),
-        );
-      },
+
+    bool _hasMorePayments(model_debt.Debt debt) {
+      return _currentPage * _itemsPerPage < debt.payments.length;
+    }
+
+  Widget _buildPayPalDetail(BuildContext context, model_debt.Debt debt) {
+    return Column(children: [
+      _buildDetailRow(context, "PayPal E-Mail", debt.paypalEmail),
+    ]);
+  }
+
+  Widget _buildTransafertDetail(BuildContext context, model_debt.Debt debt) {
+    return Column(children: [
+      _buildDetailRow(context, "IBAN", debt.iban),
+      _buildDetailRow(context, "BIC", debt.bic),
+      _buildDetailRow(context, "Accountholder", debt.bankAccountHolder),
+      _buildDetailRow(context, "Purpose", debt.reason),
+    ]);
+  }
+
+  Widget _buildPaymentsList(BuildContext context, model_debt.Debt debt) {
+  final textTheme = Theme.of(context).textTheme;
+  final colorScheme = Theme.of(context).colorScheme;
+
+  final paymentsToShow = _paginatedPayments(debt);
+
+  if (paymentsToShow.isEmpty) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Center(child: Text('No payments recorded yet.', style: textTheme.bodyMedium)),
     );
   }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ListView.builder(
+        shrinkWrap: true,
+        physics: NeverScrollableScrollPhysics(),
+        itemCount: paymentsToShow.length,
+        itemBuilder: (context, index) {
+          final payment = paymentsToShow[index];
+          return Card(
+            elevation: 1.0,
+            margin: const EdgeInsets.symmetric(vertical: 4.0),
+            child: ListTile(
+              leading: Icon(Icons.payment, color: colorScheme.secondary),
+              title: Text('${payment.amount} ${debt.currency ?? 'EUR'} : ${DateFormat('yyyy-MM').format(payment.date)}', style: textTheme.bodyMedium),
+              trailing: IconButton(
+                icon: Icon(Icons.delete, color: colorScheme.error),
+                onPressed: () => showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text('Confirm Delete'),
+                    content: Text('Are you sure you want to delete?'),
+                    actions: [
+                      TextButton(
+                        child: Text('Cancel'),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                      TextButton(
+                        child: Text('Delete', style: TextStyle(color: colorScheme.error)),
+                        onPressed: () {
+                          context.read<DebtNotifier>().deletePaymentFromDebt(debt, payment, () {
+                            setState(() {
+                              debt.payments.remove(payment);
+                            });
+                          });
+                          Navigator.of(ctx).pop();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+      if (_hasMorePayments(debt))
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12.0),
+          child: Center(
+            child: ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _currentPage++;
+                });
+              },
+              icon: Icon(Icons.expand_more),
+              label: Text('Mehr laden'),
+            ),
+          ),
+        ),
+    ],
+  );
+}
 }

@@ -7,8 +7,11 @@ abstract class BaseModel extends ChangeNotifier {
   final String? clientId;
   final DateTime? creationTime;
   final DateTime? lastUpdateTime;
+  bool isDeleted = false;
 
-  BaseModel({this.id, this.clientId, this.creationTime, this.lastUpdateTime});
+  late DocumentReference ref;
+  
+  BaseModel({this.id, this.clientId, this.creationTime, this.lastUpdateTime, this.isDeleted = false});
 
   Map<String, dynamic> toMap() => {
   };

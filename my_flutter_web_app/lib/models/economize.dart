@@ -1,75 +1,82 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:my_flutter_web_app/models/baseModel.dart';
+import 'package:my_flutter_web_app/models/category.dart';
+import 'package:my_flutter_web_app/models/transaction.dart' as model_trans;
+import 'package:my_flutter_web_app/models/transaction_status.dart';
 
-class Economize {
-  final String id; // Document ID
-  final String name;
+class Economize extends BaseModel {
+  final double? goalAmount;
+  final String title;
+  final double? beginAmount;
   final String? comment;
-  final double amount; // Target amount to economize
-  final DateTime date; // Target date
-  final DocumentReference categoryRef;
-  final List<DocumentReference>? transactionRefs; // Transactions contributing
-  final String? clientId;
-  final String? idOld;
-  final String? currency;
-  final bool? isDeleted;
-  final DateTime? timestamp; // Creation/update timestamp
-  final double? savedAmount; // If stored, sum of contributing transactions
-  final bool? isReached; // If stored, true if savedAmount >= amount
+  final DateTime? targetDate;
+  final List<DocumentReference>? transactionRefs;
+  DocumentReference? categoryRef;
+
+  List<model_trans.Transaction> transactions =  [];
+  Category? category;
 
   Economize({
-    required this.id,
-    required this.name,
+    String? id,
+    String? clientId,
+    DateTime? creationTime,
+    DateTime? lastUpdateTime,
     this.comment,
-    required this.amount,
-    required this.date,
-    required this.categoryRef,
+    this.targetDate,
+    this.goalAmount,
+    required this.title,
+    this.beginAmount,
     this.transactionRefs,
-    this.clientId,
-    this.idOld,
-    this.currency,
-    this.isDeleted,
-    this.timestamp,
-    this.savedAmount,
-    this.isReached,
-  });
+    this.categoryRef,
+  }) : super(
+          id: id,
+          clientId: clientId,
+          creationTime: creationTime,
+          lastUpdateTime: lastUpdateTime,
+        );
 
-  factory Economize.fromJson(Map<String, dynamic> json, String id) {
+  factory Economize.fromMap(Map<String, dynamic> map, String docId) {
     return Economize(
-      id: id,
-      name: json['name'] as String,
-      comment: json['comment'] as String?,
-      amount: (json['amount'] as num).toDouble(),
-      date: (json['date'] as Timestamp).toDate(),
-      categoryRef: json['categoryRef'] as DocumentReference,
-      transactionRefs: (json['transactionRefs'] as List<dynamic>?)
+      id: docId,
+      clientId: map['clientId'],
+      title: map['title'] ?? '',
+      goalAmount: (map['goalAmount'] as num?)?.toDouble(),
+      comment: map['comment'] as String?,
+      targetDate: (map['targetDate'] as DateTime?),
+      beginAmount: (map['beginAmount'] as num?)?.toDouble(),
+      creationTime: (map['creationTime'] as Timestamp?)?.toDate(),
+      lastUpdateTime: (map['lastUpdateTime'] as Timestamp?)?.toDate(),
+      transactionRefs: (map['transactionsRef'] as List<dynamic>?)
           ?.map((ref) => ref as DocumentReference)
           .toList(),
-      clientId: json['clientId'] as String?,
-      idOld: json['id_old'] as String?,
-      currency: json['currency'] as String?,
-      isDeleted: json['isDeleted'] as bool?,
-      timestamp: (json['timestamp'] as Timestamp?)?.toDate(),
-      savedAmount: (json['savedAmount'] as num?)?.toDouble(),
-      isReached: json['isReached'] as bool?,
+      categoryRef: (map['categoryRef'] as dynamic) as DocumentReference?
     );
   }
 
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = {
-      'name': name,
-      'amount': amount,
-      'date': Timestamp.fromDate(date),
-      'categoryRef': categoryRef,
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'goalAmount': goalAmount,
+      'beginAmount': beginAmount,
+      'title': title,
+      'transactionsRef': transactionRefs,
+      'clientId': clientId,
+      'creationTime': creationTime,
+      'lastUpdateTime': lastUpdateTime,
+      'categoryRef' : categoryRef
     };
-    if (comment != null) data['comment'] = comment;
-    if (transactionRefs != null) data['transactionRefs'] = transactionRefs;
-    if (clientId != null) data['clientId'] = clientId;
-    if (idOld != null) data['id_old'] = idOld;
-    if (currency != null) data['currency'] = currency;
-    if (isDeleted != null) data['isDeleted'] = isDeleted;
-    if (timestamp != null) data['timestamp'] = Timestamp.fromDate(timestamp!);
-    if (savedAmount != null) data['savedAmount'] = savedAmount;
-    if (isReached != null) data['isReached'] = isReached;
-    return data;
+  }
+}
+
+extension EconomizeExtension on Economize {
+  double get savedAmount {
+    double total = 0;
+    for (var t in transactions) {
+      final status = t.transactionStatus.where((s) => s.statusTypisiert == TransactionStatusType.Payed);
+      for (var s in status) {
+        total += t.getNewAmount(s.date) ?? t.amount;
+      }
+    }
+    return total;
   }
 }

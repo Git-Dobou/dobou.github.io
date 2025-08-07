@@ -8,8 +8,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AddPaymentDialog extends StatefulWidget {
   final Debt debt;
-
-  const AddPaymentDialog({Key? key, required this.debt}) : super(key: key);
+  final DateTime? date;
+  final  Function(model_payment.Payment) callback;
+  
+  const AddPaymentDialog({Key? key, required this.debt, required this.callback, this.date}) : super(key: key);
 
   @override
   _AddPaymentDialogState createState() => _AddPaymentDialogState();
@@ -26,6 +28,8 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
   void initState() {
     super.initState();
     _amountController = TextEditingController();
+    _amountController.text = widget.debt.paymentAmount.toString();
+    _selectedDate = widget.date ?? DateTime.now();
   }
 
   @override
@@ -66,7 +70,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
       final newPayment = model_payment.Payment(
         id: '', // Firestore will generate
         amount: amount,
-        date: _selectedDate, 
+        date: widget.date ?? _selectedDate, 
         note: '', 
         reason: '',
       );
@@ -74,6 +78,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
       final debtNotifier = Provider.of<DebtNotifier>(context, listen: false);
       try {
         await debtNotifier.addPaymentToDebt(widget.debt, newPayment);
+        widget.callback.call(newPayment);
         scaffoldMessenger.showSnackBar(
           SnackBar(content: Text('Payment added successfully!'), backgroundColor: Colors.green),
         );
@@ -123,7 +128,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
               contentPadding: EdgeInsets.zero,
               title: Text("Payment Date: ${DateFormat.yMd().format(_selectedDate)}", style: textTheme.bodyLarge),
               trailing: Icon(Icons.calendar_today, color: Theme.of(context).colorScheme.primary),
-              onTap: _isSaving ? null : () => _pickDate(context),
+              onTap: (_isSaving || widget.date != null) ? null : () => _pickDate(context),
             ),
           ],
         ),

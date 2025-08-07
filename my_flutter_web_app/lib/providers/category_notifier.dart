@@ -58,7 +58,7 @@ class CategoryNotifier extends BaseNotifier {
     //       model.Category.fromJson(doc.data() as Map<String, dynamic>, doc.id)
     //     ).toList();
     //   } catch (e) {
-    //     print("Error parsing categories: \$e");
+    //     print("Error parsing categories: $e");
     //     // Handle error, maybe set categories to empty or show an error state
     //     _categories = [];
     //   }
@@ -66,7 +66,7 @@ class CategoryNotifier extends BaseNotifier {
     //   _isLoading = false;
     //   notifyListeners();
     // }, onError: (error) {
-    //   print("Error fetching categories: \$error");
+    //   print("Error fetching categories: $error");
     //   _isLoading = false;
     //   _categories = []; // Clear categories on error
     //   notifyListeners();
@@ -89,7 +89,7 @@ class CategoryNotifier extends BaseNotifier {
     });
   }
 
-  Future<void> addCategory(String name, String iconName) async {
+  Future<void> addCategory(model.Category category) async {
     if (_currentUser == null) {
       print("Cannot add category: No user logged in.");
       return;
@@ -97,25 +97,20 @@ class CategoryNotifier extends BaseNotifier {
     _isLoading = true; // Optional: indicate loading for add operation
     notifyListeners();
     try {
-      await _firestore.collection('category').add({
-        'name': name,
-        'icon': iconName, // Assuming iconName maps to model.Category.icon
-        'clientId': _currentUser!.uid,
-        // 'color': null, // Explicitly null or remove if not set by default
-        // 'id_old': null, // Explicitly null or remove if not set by default
-      });
-      // Listener in fetchCategories will auto-update the list, 
-      // so no need to manually add to _categories here.
-      // We might not even need isLoading here if UI updates reactively.
+
+      var map = category.toMap();
+      map = completeAdd(map);
+
+      await _firestore.collection('category').add(map);
     } catch (e) {
-      print("Error adding category: \$e");
+      print("Error adding category: $e");
     } finally {
       _isLoading = false; // Reset loading state if it was set
       notifyListeners();
     }
   }
 
-  Future<void> updateCategory(String id, String name, String iconName) async {
+  Future<void> updateCategory(model.Category category) async {
      if (_currentUser == null) {
       print("Cannot update category: No user logged in.");
       return;
@@ -123,14 +118,11 @@ class CategoryNotifier extends BaseNotifier {
     _isLoading = true; // Optional: indicate loading for update operation
     notifyListeners();
     try {
-      await _firestore.collection('category').doc(id).update({
-        'name': name,
-        'icon': iconName,
-        // Ensure other fields are not accidentally wiped out if not included here
-        // e.g., 'color', 'id_old' if they exist and should be preserved or updatable
-      });
+      var map = category.toMap();
+      map = completeUpdate(map);
+      await _firestore.collection('category').doc(category.id).update(map);
     } catch (e) {
-      print("Error updating category: \$e");
+      print("Error updating category: $e");
     } finally {
       _isLoading = false; // Reset loading state
       notifyListeners();
@@ -147,7 +139,7 @@ class CategoryNotifier extends BaseNotifier {
     try {
       await _firestore.collection('category').doc(id).delete();
     } catch (e) {
-      print("Error deleting category: \$e");
+      print("Error deleting category: $e");
     } finally {
       _isLoading = false; // Reset loading state
       notifyListeners();
