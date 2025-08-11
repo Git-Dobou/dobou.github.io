@@ -378,7 +378,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               s.date.MYString == viewModel.selectedMonth.MYString);
           viewModel.deleteDataTransactionStatus(status: status, transaction: transaction, callback: () {});
         } else {
-          final status = TransactionStatus(status: TransactionStatusType.Deactivated.toString(), date: viewModel.selectedMonth);
+          final status = TransactionStatus(status: TransactionStatusType.Deactivated.name, date: viewModel.selectedMonth);
           viewModel.addDataTransactionStatus(status: status, transaction: transaction, callback: () {
             final debt = transaction.debt;
             final payment = debt?.payments.firstWhereOrNull((p) =>

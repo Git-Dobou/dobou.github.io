@@ -182,7 +182,7 @@ title: Text(
     style: textTheme.bodyMedium,
   ),
   Text(
-    transaction.isDeactivated
+    transaction.isTransactionDeactivated(vm.selectedMonth)
         ? 'Deaktiviert'
         : transaction.isTransactionPayed(vm.selectedMonth)
             ? 'Bezahlt'
@@ -191,7 +191,7 @@ title: Text(
       fontWeight: FontWeight.bold,
       color: transaction.isTransactionPayed(vm.selectedMonth)
           ? Colors.green[700]
-          : transaction.isDeactivated
+          : transaction.isTransactionDeactivated(vm.selectedMonth)
               ? Colors.red[700]
               : Colors.orangeAccent[700],
     ),
@@ -299,7 +299,7 @@ title: Text(
         ...headerWidgets,
             if (vm.isLoading)
 Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 16), // 16px links & rechts
+  padding: const EdgeInsets.all(20.0),
   child: Shimmer.fromColors(
     baseColor: Colors.grey[300]!,
     highlightColor: Colors.grey[100]!,

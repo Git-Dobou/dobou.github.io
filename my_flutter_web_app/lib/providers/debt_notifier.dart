@@ -57,20 +57,21 @@ class DebtNotifier extends BaseNotifier {
 
   Future<model_debt.Debt> buildDebt(model_debt.Debt debt) async {
     List<model_payment.Payment> listPayments = [];
+              if (debt.paymentRefs.isNotEmpty) {
+
           final snapshot = await firestore
                           .collection('payment') // passe an deine Collection an
                           .where(FieldPath.documentId, whereIn: debt.paymentRefs)
                           .get();
 
-    for(var doc in snapshot.docs) {
-      if(!doc.exists) {
-        continue;
-      }
-
+        for(var doc in snapshot.docs) {
+          if(!doc.exists) {
+            continue;
+          }
       var payment = model_payment.Payment.fromMap(doc.data(), doc.id);      
       listPayments.add(payment);
     }
-
+              }
     debt.payments = listPayments;
     return debt;
   }

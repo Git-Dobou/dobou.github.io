@@ -106,7 +106,7 @@ ThemeData _buildTheme(ColorScheme colorScheme) {
         foregroundColor: colorScheme.primary, 
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 10.0,
       shadowColor: Colors.black.withOpacity(0.6), // wichtig für Dark Mode
       margin: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
