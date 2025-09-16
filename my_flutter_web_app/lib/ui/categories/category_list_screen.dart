@@ -17,6 +17,16 @@ class CategoryListScreen extends StatefulWidget {
 class _CategoryListScreenState extends State<CategoryListScreen> {
   String searchText = '';
 
+  CategoryNotifier get notifier => Provider.of<CategoryNotifier>(context, listen: false);
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration.zero, () {
+      notifier.fetchCategories();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final authNotifier = Provider.of<AuthNotifier>(context);

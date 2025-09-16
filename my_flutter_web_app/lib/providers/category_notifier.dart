@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:my_flutter_web_app/providers/BaseNotifier.dart';
+import 'package:my_flutter_web_app/providers/auth_notifier.dart';
 import '../models/category.dart' as model;
 
 class CategoryNotifier extends BaseNotifier {
@@ -11,86 +12,43 @@ class CategoryNotifier extends BaseNotifier {
   List<model.Category> _categories = [];
   bool _isLoading = false;
   StreamSubscription? _categorySubscription;
-  User? _currentUser;
 
   List<model.Category> get categories => _categories;
   bool get isLoading => _isLoading;
 
-  CategoryNotifier() {
-    // Initialize _currentUser immediately if possible
-    _currentUser = _auth.currentUser;
-    if (_currentUser != null) {
-      fetchCategories();
-    }
-
-    _auth.authStateChanges().listen((user) {
-      _currentUser = user;
-      if (_currentUser != null) {
-        fetchCategories();
-      } else {
-        _categories = [];
-        _categorySubscription?.cancel();
-        _isLoading = false; // Reset loading state on logout
-        notifyListeners();
-      }
-    });
+  CategoryNotifier({required AuthNotifier authNotifier}) {
+    this.authNotifier = authNotifier;
   }
 
-  void fetchCategories() {
-    if (_currentUser == null) {
+  void reset() {
+    _categories = [];
+    _isLoading = false;
+    isLoaded = false;
+    notifyListeners();
+  }
+
+  Future<void> fetchCategories() async {
+    if (authNotifier!.user == null) {
       _categories = []; // Clear categories if no user
       _isLoading = false;
       notifyListeners();
       return;
     }
 
-    // _isLoading = true;
-    // notifyListeners();
-
-    // _categorySubscription?.cancel(); // Cancel previous subscription
-    // _categorySubscription = _firestore
-    //     .collection('category') // Collection name as per instructions
-    //     .where('clientId', isEqualTo: _currentUser!.uid)
-    //     .snapshots()
-    //     .listen((snapshot) {
-    //   try {
-    //     _categories = snapshot.docs.map((doc) => 
-    //       model.Category.fromJson(doc.data() as Map<String, dynamic>, doc.id)
-    //     ).toList();
-    //   } catch (e) {
-    //     print("Error parsing categories: $e");
-    //     // Handle error, maybe set categories to empty or show an error state
-    //     _categories = [];
-    //   }
-
-    //   _isLoading = false;
-    //   notifyListeners();
-    // }, onError: (error) {
-    //   print("Error fetching categories: $error");
-    //   _isLoading = false;
-    //   _categories = []; // Clear categories on error
-    //   notifyListeners();
-    // });
-
-    // _isLoading = true;
-
     _categorySubscription?.cancel(); // Cancel previous subscription
 
+    if (!isLoaded) {
     fetchAll('category', model.Category.fromMap).then((result) async {
       _categories = result;
       notifyListeners();
       _isLoading = false;
     });
-  }
-
-  Future<void> _fetchCategories() async {
-    fetchAll('category', model.Category.fromMap).then((result) async {
-      _categories = result; 
-    });
+    isLoaded = true;
+    }
   }
 
   Future<void> addCategory(model.Category category) async {
-    if (_currentUser == null) {
+    if (authNotifier!.user == null) {
       print("Cannot add category: No user logged in.");
       return;
     }
@@ -111,7 +69,7 @@ class CategoryNotifier extends BaseNotifier {
   }
 
   Future<void> updateCategory(model.Category category) async {
-     if (_currentUser == null) {
+     if (authNotifier!.user == null) {
       print("Cannot update category: No user logged in.");
       return;
      }
@@ -130,7 +88,7 @@ class CategoryNotifier extends BaseNotifier {
   }
 
   Future<void> deleteCategory(String id) async {
-    if (_currentUser == null) {
+    if (authNotifier!.user == null) {
       print("Cannot delete category: No user logged in.");
       return;
     }

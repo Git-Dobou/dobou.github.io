@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:my_flutter_web_app/ui/categories/category_list_screen.dart';
+import 'package:my_flutter_web_app/ui/project/project_list_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_notifier.dart';
 
@@ -165,7 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Card(
                     child: ListTile(
                       title: const Text('Manage categories'),
-                       onTap: () {
+                      onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -175,8 +176,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                       trailing: Icon(Icons.arrow_right),
                     ),
-                  )
-                  // Removed old navigation buttons
+                  ),
+                  Card(
+                    child: ListTile(
+                      title: const Text('Manage Projects'),
+                      onTap: () {
+                        // TODO: Replace with your ProjectListScreen
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ProjectListScreen(),
+                          ),
+                        );
+                      },
+                      trailing: Icon(Icons.arrow_right),
+                    ),
+                  ),
                 ],
               ),
             ),

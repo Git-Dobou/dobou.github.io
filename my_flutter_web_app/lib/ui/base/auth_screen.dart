@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:my_flutter_web_app/providers/auth_notifier.dart';
 import 'package:my_flutter_web_app/ui/main_screen.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -31,11 +32,16 @@ class _AuthScreenState extends State<AuthScreen> {
     final prefs = await SharedPreferences.getInstance();
     final savedEmail = prefs.getString('email');
     final savedPassword = prefs.getString('password');
+    print( 'savedEmail: $savedEmail, savedPassword: $savedPassword');
+
     if (savedEmail != null && savedPassword != null) {
       _emailController.text = savedEmail;
       _passwordController.text = savedPassword;
       setState(() => _rememberMe = true);
     }
+
+    _emailController.text = "Daniel.Dobou@outlook.de";
+    _passwordController.text = "Test123!";
   }
 
   Future<void> _authenticate() async {
@@ -43,10 +49,18 @@ class _AuthScreenState extends State<AuthScreen> {
 
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final authNotifier = Provider.of<AuthNotifier>(context, listen: false);
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('E-Mail und Passwort dürfen nicht leer sein')),
+      );
+      return;
+    }
 
     try {
       if (_isLogin) {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
+        await authNotifier.signIn(email, password);
       } else {
         await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
         await FirebaseAuth.instance.currentUser?.updateDisplayName(_usernameController.text.trim());
@@ -100,81 +114,77 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+@override
+Widget build(BuildContext context) {
+  final textTheme = Theme.of(context).textTheme;
 
-     if (AuthNotifier.instance.user != null) {
-      return MainScreen();
-    } else {
-    return Scaffold(
-      appBar: AppBar(title: Text(_isLogin ? 'Login' : 'Registrieren')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              if (!_isLogin)
-                TextFormField(
-                  controller: _usernameController,
-                  decoration: InputDecoration(labelText: 'Benutzername'),
-                ),
-
-                              const SizedBox(height: 8),
-
-              if (!_isLogin)
-                TextFormField(
-                  controller: _phoneController,
-                  decoration: InputDecoration(labelText: 'Telefonnummer'),
-                  keyboardType: TextInputType.phone,
-                ),
-
-                              const SizedBox(height: 8),
-
-              TextFormField(
-                controller: _emailController,
-                decoration: InputDecoration(labelText: 'E-Mail'),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) => value!.contains('@') ? null : 'Ungültige E-Mail',
-              ),
-
-                            const SizedBox(height: 8),
-
-              TextFormField(
-                controller: _passwordController,
-                decoration: InputDecoration(labelText: 'Passwort'),
-                obscureText: true,
-                validator: (value) => value!.length >= 6 ? null : 'Mind. 6 Zeichen',
-              ),
-
-                            const SizedBox(height: 8),
-
-              Row(
+  return Consumer<AuthNotifier>(
+    builder: (context, authNotifier, child) {
+      if (authNotifier.user != null) {
+        return MainScreen();
+      } else {
+        return Scaffold(
+          appBar: AppBar(title: Text(_isLogin ? 'Login' : 'Registrieren')),
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: ListView(
                 children: [
-                  Checkbox(value: _rememberMe, onChanged: (val) => setState(() => _rememberMe = val!)),
-                  Text('Zugangsdaten merken')
+                  if (!_isLogin)
+                    TextFormField(
+                      controller: _usernameController,
+                      decoration: InputDecoration(labelText: 'Benutzername'),
+                    ),
+                  const SizedBox(height: 8),
+                  if (!_isLogin)
+                    TextFormField(
+                      controller: _phoneController,
+                      decoration: InputDecoration(labelText: 'Telefonnummer'),
+                      keyboardType: TextInputType.phone,
+                    ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: InputDecoration(labelText: 'E-Mail'),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) => value!.contains('@') ? null : 'Ungültige E-Mail',
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _passwordController,
+                    decoration: InputDecoration(labelText: 'Passwort'),
+                    obscureText: true,
+                    validator: (value) => value!.length >= 6 ? null : 'Mind. 6 Zeichen',
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Checkbox(value: _rememberMe, onChanged: (val) => setState(() => _rememberMe = val!)),
+                      Text('Zugangsdaten merken')
+                    ],
+                  ),
+                  TextButton(
+                    onPressed: _showPasswordResetDialog,
+                    child: Text('Passwort vergessen?'),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _authenticate,
+                    child: Text(_isLogin ? 'Einloggen' : 'Registrieren'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => setState(() => _isLogin = !_isLogin),
+                    child: Text(_isLogin ? 'Noch kein Konto? Registrieren' : 'Bereits registriert? Login'),
+                  ),
                 ],
               ),
-              TextButton(
-                onPressed: _showPasswordResetDialog,
-                child: Text('Passwort vergessen?'),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _authenticate,
-                child: Text(_isLogin ? 'Einloggen' : 'Registrieren'),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => setState(() => _isLogin = !_isLogin),
-                child: Text(_isLogin ? 'Noch kein Konto? Registrieren' : 'Bereits registriert? Login'),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
-    );
-  }
+        );
+      }
+    },
+  );
 }
 }

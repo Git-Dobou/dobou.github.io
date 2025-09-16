@@ -24,33 +24,41 @@ class User extends BaseModel {
   final String name;
   final String identification;
   final List<DocumentReference> projects;
+  final List<String> pendingProjects;
+  final String userId;
 
   User({
     String? id,
     String? clientId,
     DateTime? creationTime,
     DateTime? lastUpdateTime,
+    this.userId = '',
     required this.name,
     required this.identification,
     this.projects = const [],
+    this.pendingProjects = const [],
   }) : super(id: id, clientId: clientId, creationTime: creationTime, lastUpdateTime: lastUpdateTime);
 
   factory User.fromMap(Map<String, dynamic> map, String docId) => User(
         id: docId,
         clientId: map['clientId'],
+        userId: map['userId'] ?? '',
         name: map['name'] ?? '',
         identification: map['identification'] ?? '',
         projects: List<DocumentReference>.from(map['projects'] ?? []),
         creationTime: (map['creationTime'] as Timestamp?)?.toDate(),
         lastUpdateTime: (map['lastUpdateTime'] as Timestamp?)?.toDate(),
+        pendingProjects: List<String>.from(map['pendingProjects'] ?? []),
       );
 
   Map<String, dynamic> toMap() => {
         'name': name,
         'identification': identification,
         'projects': projects,
+        'userId': userId,
         'clientId': clientId,
         'creationTime': creationTime,
         'lastUpdateTime': lastUpdateTime,
+        'pendingProjects': pendingProjects,
       };
 }

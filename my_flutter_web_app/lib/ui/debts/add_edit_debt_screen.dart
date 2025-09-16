@@ -59,6 +59,10 @@ class _AddEditDebtScreenState extends State<AddEditDebtScreen> {
   @override
   void initState() {
     super.initState();
+    Future.delayed(Duration.zero, () {
+      Provider.of<CategoryNotifier>(context, listen: false).fetchCategories();
+    });
+    
     if (_isEditing) {
       final debt = widget.debtToEdit!;
       _nameController = TextEditingController(text: debt.creditor);

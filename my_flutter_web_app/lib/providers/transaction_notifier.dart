@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:jiffy/jiffy.dart';
 import 'package:collection/collection.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,6 +10,8 @@ import 'package:my_flutter_web_app/models/debt.dart';
 import 'package:my_flutter_web_app/models/project.dart';
 import 'package:my_flutter_web_app/models/transaction_status.dart';
 import 'package:my_flutter_web_app/providers/BaseNotifier.dart';
+import 'package:my_flutter_web_app/providers/auth_notifier.dart';
+import 'package:my_flutter_web_app/providers/category_notifier.dart';
 import 'package:my_flutter_web_app/providers/debt_notifier.dart';
 import '../models/transaction.dart' as model;
 import '../models/debt.dart' as model_debt;
@@ -17,12 +20,12 @@ import '../models/user.dart' as modelUser;
 
 class TransactionNotifier extends BaseNotifier {
   DebtNotifier debtNotifier;
+  CategoryNotifier categoryNotifier;
   List<model.Transaction> _transactions = [];
   Map<DateTime, List<model.Transaction>> _transactionsPerMonth = {};
   List<model.Transaction> _filteredTransactions = [];
   bool _isLoading = false;
   StreamSubscription? _transactionSubscription;
-  User? _currentUser;
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
 
   List<model.Transaction> get transactions => _transactions;
@@ -30,19 +33,9 @@ class TransactionNotifier extends BaseNotifier {
   bool get isLoading => _isLoading;
   DateTime get selectedMonth => _selectedMonth;
 
-  TransactionNotifier({required this.debtNotifier}) {
-    _currentUser = auth.currentUser;
-    auth.authStateChanges().listen((user) {
-      _currentUser = user;
-      if (_currentUser != null) {
-        fetchTransactions();
-      } else {
-        _transactions = [];
-        _transactionSubscription?.cancel();
-        _isLoading = false;
-        notifyListeners();
-      }
-    });
+  TransactionNotifier({required this.debtNotifier, required this.categoryNotifier, required AuthNotifier authNotifier}) {
+    this.authNotifier = authNotifier;
+    
   }
 
   void loading(bool status) {
@@ -81,16 +74,15 @@ class TransactionNotifier extends BaseNotifier {
         break;
       default:
         filteredTransactionsForView = filteredBySearch;
-        _isLoading = false;
-        notifyListeners();
     }
+
+    notifyListeners();
   }
 
   void selectMonth(DateTime month) async {
     _selectedMonth = DateTime(month.year, month.month, 1);
     _transactions = [];
     _filteredTransactions = [];
-    _transactionsPerMonth.clear();
     filteredTransactionsForView.clear();
     notifyListeners();
     fetchTransactions();
@@ -173,80 +165,261 @@ class TransactionNotifier extends BaseNotifier {
     return transaction;
   }
 
-  void fetchTransactions() async {
-    if (_currentUser == null) {
-      _transactions = [];
-      _isLoading = false;
-      notifyListeners();
-      return;
-    }
-
-    _isLoading = true;
-
-    if (!_transactionsPerMonth.keys.contains(selectedMonth)) {
-      _transactions.clear();
-
-      final startOfMonth = DateTime(selectedMonth.year, selectedMonth.month);
-      final nextMonth = Jiffy.parseFromDateTime(startOfMonth)
-          .add(months: 1)
-          .dateTime;
-
-      final fixedQuery = await firestore
-          .collection('transaction')
-          .where("clientId", isEqualTo: "1735421-1353-53")
-          .where("isFixed", isEqualTo: true)
-          .where("availableFrom", isLessThan: nextMonth)
-          .where("availableUntil", isGreaterThanOrEqualTo: startOfMonth)
-          .get();
-
-      final fixedNullUntilQuery = await firestore
-          .collection('transaction')
-          .where("clientId", isEqualTo: "1735421-1353-53")
-          .where("isFixed", isEqualTo: true)
-          .where("availableFrom", isLessThan: nextMonth)
-          .where("availableUntil", isNull: true)
-          .get();
-
-      final nonFixedQuery = await firestore
-          .collection('transaction')
-          .where("clientId", isEqualTo: "1735421-1353-53")
-          .where("isFixed", isEqualTo: false)
-          .where("availableFrom", isGreaterThanOrEqualTo: startOfMonth)
-          .where("availableFrom", isLessThan: nextMonth)
-          .get();
-
-      final allDocs = [
-        ...fixedQuery.docs,
-        ...fixedNullUntilQuery.docs,
-        ...nonFixedQuery.docs,
-      ];
-
-      for (int i = 0; i < allDocs.length; i++) {
-        var doc = allDocs[i];
-        if (doc['isDeleted'] == true) {
-          continue;
-        }
-        final updated = await BuildTransactionWithBoth(
-            model.Transaction.fromMap(doc.data(), doc.id), doc.reference);
-        updated.isLoadingDetails = false;
-        _transactions.add(updated);
-      }
-
-      _transactionsPerMonth[selectedMonth] = _transactions;
-    } else {
-      _transactions = _transactionsPerMonth[selectedMonth]!;
-    }
-
-    _filteredTransactions = _transactions
-        .where((transaction) => checkTransactionForMonth(transaction, selectedMonth))
-        .toList();
-    setFilteredTransactions();
+  void reset() {
+    _transactions = [];
+    _filteredTransactions = [];
+    _transactionsPerMonth = {};
     notifyListeners();
-    _isLoading = false;
   }
 
+
+Future<void> fetchTransactions() async {
+  if (authNotifier!.user == null) {
+    _transactions = [];
+    _isLoading = false;
+    notifyListeners();
+    return;
+  }
+
+  _isLoading = true;
+  notifyListeners();
+
+  if (!_transactionsPerMonth.keys.contains(selectedMonth)) {
+    _transactions.clear();
+
+    final startOfMonth = DateTime(selectedMonth.year, selectedMonth.month);
+    final nextMonth = Jiffy.parseFromDateTime(startOfMonth)
+        .add(months: 1)
+        .dateTime;
+
+    print(authNotifier!.project!.projectIdentification);
+    print(selectedMonth);
+
+    final fixedQuery = await firestore
+        .collection('transaction')
+        .where("clientId", isEqualTo: authNotifier!.project!.projectIdentification)
+        .where("isFixed", isEqualTo: true)
+        .where("availableFrom", isLessThan: nextMonth)
+        .where("availableUntil", isGreaterThanOrEqualTo: startOfMonth)
+        .get();
+
+    final fixedNullUntilQuery = await firestore
+        .collection('transaction')
+        .where("clientId", isEqualTo: authNotifier!.project!.projectIdentification)
+        .where("isFixed", isEqualTo: true)
+        .where("availableFrom", isLessThan: nextMonth)
+        .where("availableUntil", isNull: true)
+        .get();
+
+    final nonFixedQuery = await firestore
+        .collection('transaction')
+        .where("clientId", isEqualTo: authNotifier!.project!.projectIdentification)
+        .where("isFixed", isEqualTo: false)
+        .where("availableFrom", isGreaterThanOrEqualTo: startOfMonth)
+        .where("availableFrom", isLessThan: nextMonth)
+        .get();
+
+    final allDocs = [
+      ...fixedQuery.docs,
+      ...fixedNullUntilQuery.docs,
+      ...nonFixedQuery.docs,
+    ];
+
+    // --------- Optimierung: Batch-Laden aller Referenzen ---------
+final allTransactionsWithRef = allDocs
+    .where((doc) => doc['isDeleted'] != true)
+    .map((doc) => MapEntry(doc.reference, model.Transaction.fromMap(doc.data(), doc.id)))
+    .toList();
+
+    final allTransactions = allTransactionsWithRef.map((e) => e.value).toList();
+
+    // Sammle alle Referenzen
+    final categoryRefs = allTransactions
+        .map((t) => t.categoryRef)
+        .where((ref) => ref != null)
+        .toSet()
+        .toList();
+
+    final transactionStatusRefs = <String>[];
+    final transactionNewAmountRefs = <String>[];
+    final subTransactionRefs = <String>[];
+
+for (var t in allTransactions) {
+  if (t.transactionStatusRef != null) {
+    transactionStatusRefs.addAll(
+      (t.transactionStatusRef! as List)
+          .map((ref) => ref is String ? ref : (ref as DocumentReference).id)
+          .toList()
+    );
+  }
+  if (t.transactionNewAmountsRef != null) {
+    transactionNewAmountRefs.addAll(
+      (t.transactionNewAmountsRef! as List)
+          .map((ref) => ref is String ? ref : (ref as DocumentReference).id)
+          .toList()
+    );
+  }
+  if (t.subTransactionsRef != null) {
+    subTransactionRefs.addAll(
+      (t.subTransactionsRef! as List)
+          .map((ref) => ref is String ? ref : (ref as DocumentReference).id)
+          .toList()
+    );
+  }
+}
+
+    // batch laden
+    Map<String, Category> categories = {};
+    if (allTransactions.isNotEmpty) {
+      final transactionIds = allTransactions
+          .map((t) => t.categoryRef)
+          .where((ref) => ref != null)
+          .map((ref) => ref!.id)
+          .toList();
+
+      final categoryChunks = transactionIds.slices(10);
+      for (final chunk in categoryChunks) {
+        final snap = await firestore
+            .collection('category')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (var doc in snap.docs) {
+          categories[doc.id] = Category.fromMap(doc.data(), doc.id);
+        }
+      }
+    }
+
+    // Debts batch laden: Hole alle Debts, deren transactionRef auf eine der geladenen Transaktionen zeigt
+    Map<String, model_debt.Debt> debts = {};
+    if (allTransactions.isNotEmpty) {
+      final transactionIds = allTransactionsWithRef.map((e) => e.key).toList();
+      final debtChunks = transactionIds.slices(10);
+      for (final chunk in debtChunks) {
+        final snap = await firestore
+            .collection('debt')
+            .where('transactionRef', whereIn: chunk)
+            .get();
+        for (var doc in snap.docs) {
+          final debt = model_debt.Debt.fromMap(doc.data(), doc.id);
+          // Mappe nach transactionId!
+          debts[doc['transactionRef'].id] = debt;
+        }
+      }
+    }
+
+    print(allTransactions.length);
+    print(debts);
+
+    // TransactionStatus batch laden
+    Map<String, TransactionStatus> statuses = {};
+    if (transactionStatusRefs.isNotEmpty) {
+      final statusChunks = transactionStatusRefs.toSet().toList().slices(10);
+      for (final chunk in statusChunks) {
+        final snap = await firestore
+            .collection('transactionStatus')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (var doc in snap.docs) {
+          statuses[doc.id] = TransactionStatus.fromMap(doc.data(), doc.id);
+        }
+      }
+    }
+
+    // TransactionNewAmount batch laden
+    Map<String, TransactionNewAmount> newAmounts = {};
+    if (transactionNewAmountRefs.isNotEmpty) {
+      final newAmountChunks = transactionNewAmountRefs.toSet().toList().slices(10);
+      for (final chunk in newAmountChunks) {
+        final snap = await firestore
+            .collection('transactionNewAmount')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (var doc in snap.docs) {
+          newAmounts[doc.id] = TransactionNewAmount.fromMap(doc.data(), doc.id);
+        }
+      }
+    }
+
+    // SubTransactions batch laden
+    Map<String, model.Transaction> subTransactions = {};
+    if (subTransactionRefs.isNotEmpty) {
+      final subChunks = subTransactionRefs.toSet().toList().slices(10);
+      for (final chunk in subChunks) {
+        final snap = await firestore
+            .collection('transaction')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (var doc in snap.docs) {
+          subTransactions[doc.id] = model.Transaction.fromMap(doc.data(), doc.id);
+        }
+      }
+    }
+
+    // --------- Transaktionen zusammensetzen ---------
+    _transactions.clear();
+    for (var transaction in allTransactions) {
+      // Kategorie
+      if (transaction.categoryRef != null) {
+        transaction.category = categories[transaction.categoryRef!.id];
+      }
+
+      // Debt: jetzt korrekt!
+      if (debts.containsKey(transaction.id)) {
+        transaction.debt = await debtNotifier.buildDebt(debts[transaction.id]!);
+        final restMonth = transaction.debt?.restMonth ?? 0;
+        if (restMonth == 0) {
+          transaction.availableUntil = transaction.debt?.lastPaymentDate;
+        } else {
+          transaction.availableUntil = Jiffy.parseFromDateTime(DateTime.now())
+              .add(months: restMonth)
+              .dateTime;
+        }
+      }
+
+      // Status
+      if ((transaction.transactionStatusRef ?? []).isNotEmpty) {
+        transaction.transactionStatus = transaction.transactionStatusRef!
+            .map((id) => statuses[id.id])
+            .whereType<TransactionStatus>()
+            .toList();
+
+      }
+
+      // NewAmounts
+      if ((transaction.transactionNewAmountsRef ?? []).isNotEmpty) {
+        transaction.transactionNewAmounts = transaction.transactionNewAmountsRef!
+            .map((id) => newAmounts[id.id])
+            .whereType<TransactionNewAmount>()
+            .toList();
+      }
+
+      // SubTransactions
+      if ((transaction.subTransactionsRef ?? []).isNotEmpty) {
+        transaction.subTransactions = transaction.subTransactionsRef!
+            .map((id) => subTransactions[id.id])
+            .whereType<model.Transaction>()
+            .toList();
+      }
+
+      transaction.isLoadingDetails = false;
+      _transactions.add(transaction);
+    }
+
+    _transactionsPerMonth[selectedMonth] = _transactions;
+  } else {
+    _transactions = _transactionsPerMonth[selectedMonth]!;
+  }
+
+  _isLoading = false;
+  _filteredTransactions = _transactions
+      .where((transaction) => checkTransactionForMonth(transaction, selectedMonth))
+      .toList();
+  setFilteredTransactions();
+  notifyListeners();
+}
+
   Future<DocumentReference> addTransaction(model.Transaction transaction) async {
-    if (_currentUser == null) {
+    if (authNotifier!.user == null) {
       throw Exception("User not logged in");
     }
 
@@ -270,7 +443,7 @@ class TransactionNotifier extends BaseNotifier {
   }
 
   Future<void> updateTransaction(model.Transaction transaction) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     Map<String, dynamic> transactionData = transaction.toJson();
     transactionData = completeUpdate(transactionData);
 
@@ -283,7 +456,7 @@ class TransactionNotifier extends BaseNotifier {
   }
 
   Future<void> deleteTransaction(model.Transaction transaction) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
 
     transaction.isDeleted = true;
     Map<String, dynamic> transactionData = transaction.toJson();
@@ -358,7 +531,7 @@ class TransactionNotifier extends BaseNotifier {
     required model.Transaction transaction,
     required Null Function() callback,
   }) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
 
     DocumentReference ref = firestore.collection('transactionStatus').doc();
     Map<String, dynamic> statusData = status.toMap();

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:my_flutter_web_app/providers/project_notifier.dart';
 import 'package:my_flutter_web_app/ui/base/auth_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -32,17 +33,20 @@ void main() async {
   // await FirebaseFirestore.instance.terminate();
   // await FirebaseFirestore.instance.enablePersistence(); // Optional
   
-  DebtNotifier debtNotifier = DebtNotifier();
-  TransactionNotifier transactionNotifier = TransactionNotifier(debtNotifier: debtNotifier);
+  AuthNotifier authNotifier = AuthNotifier();
+  DebtNotifier debtNotifier = DebtNotifier(authNotifier);
+  CategoryNotifier categoryNotifier = CategoryNotifier(authNotifier: authNotifier);
+  TransactionNotifier transactionNotifier = TransactionNotifier(debtNotifier: debtNotifier, authNotifier: authNotifier, categoryNotifier: categoryNotifier);
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthNotifier()),
+        ChangeNotifierProvider(create: (_) => authNotifier),
         ChangeNotifierProvider(create: (_) => SettingsNotifier()),
-        ChangeNotifierProvider(create: (_) => CategoryNotifier()),
+        ChangeNotifierProvider(create: (_) => categoryNotifier),
         ChangeNotifierProvider(create: (_) => debtNotifier),
         ChangeNotifierProvider(create: (_) => transactionNotifier),
+        ChangeNotifierProvider(create: (_) => ProjectNotifier(authNotifier, transactionNotifier, debtNotifier, categoryNotifier)),
       ],
       child: MyApp(),
     ),

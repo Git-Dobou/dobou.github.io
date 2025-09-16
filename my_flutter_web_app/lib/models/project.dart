@@ -5,7 +5,7 @@ import 'package:my_flutter_web_app/models/user.dart';
 class Project extends BaseModel {
   final String name;
   final String description;
-  final bool active;
+  bool active;
   final String projectIdentification;
   final bool debtTabVisible;
   final bool economizeTabVisible;

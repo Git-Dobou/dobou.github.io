@@ -13,10 +13,17 @@ class DebtListScreen extends StatefulWidget {
   @override
   _DebtListScreenState createState() =>
       _DebtListScreenState();
-
 }
 
 class _DebtListScreenState extends State<DebtListScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() async =>
+      await Provider.of<DebtNotifier>(context, listen: false).fetchDebts()
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +38,6 @@ class _DebtListScreenState extends State<DebtListScreen> {
         body: Center(child: Text('Please log in to view debts.', style: textTheme.titleMedium)),
       );
     }
-
     
     final currencyFormat = NumberFormat.simpleCurrency(locale: 'de_DE'); 
     // final debtNotifier = Provider.of<DebtNotifier>(context); // Not needed here for just triggering fetch

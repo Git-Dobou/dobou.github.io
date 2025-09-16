@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:my_flutter_web_app/models/category.dart';
 import 'package:my_flutter_web_app/models/transaction_status.dart';
 import 'package:my_flutter_web_app/providers/BaseNotifier.dart';
+import 'package:my_flutter_web_app/providers/auth_notifier.dart';
 import '../models/debt.dart' as model_debt;
 import '../models/transaction.dart' as model_transaction;
 import '../models/economize.dart' as model_economize;
@@ -11,8 +12,6 @@ import '../models/payment.dart' as model_payment; // Import Payment model
 
 class DebtNotifier extends BaseNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  User? _currentUser;
 
   // --- Debt State ---
   List<model_debt.Debt> _debts = [];
@@ -28,31 +27,8 @@ class DebtNotifier extends BaseNotifier {
   List<model_economize.Economize> get economizes => _economizes;
   bool get isEconomizeLoading => _isEconomizeLoading;
 
-  DebtNotifier() {
-    _currentUser = _auth.currentUser;
-    if (_currentUser != null) {
-      // fetchDebts();
-      // fetchEconomizes();
-    }
-    _auth.authStateChanges().listen((user) {
-      _currentUser = user;
-      if (_currentUser != null) {
-        fetchDebts();
-        fetchEconomizes();
-      } else {
-        _debts = [];
-        _debtSubscription?.cancel();
-        _isDebtsLoading = false;
-
-        _economizes = [];
-        _economizeSubscription?.cancel();
-        _isEconomizeLoading = false;
-        
-        // _currentDebtPayments = [];
-        // _currentDebtPaymentsSubscription?.cancel();
-        notifyListeners();
-      }
-    });
+  DebtNotifier(AuthNotifier authNotifier) {
+    this.authNotifier = authNotifier;
   }
 
   Future<model_debt.Debt> buildDebt(model_debt.Debt debt) async {
@@ -76,9 +52,16 @@ class DebtNotifier extends BaseNotifier {
     return debt;
   }
 
+
+  void reset() {
+    isLoaded = false;
+    notifyListeners();
+  }
+
   // --- Debt Methods ---
-  void fetchDebts({bool withPayment = true}) async {
-    if (_currentUser == null) {
+  Future<void> fetchDebts({bool withPayment = true}) async {
+
+    if (authNotifier!.user == null) {
       _economizes = []; 
       _isEconomizeLoading = false; 
       notifyListeners(); 
@@ -86,6 +69,9 @@ class DebtNotifier extends BaseNotifier {
     }
 
     _isDebtsLoading = true;
+      notifyListeners();
+
+    print("Fetching debts for project: ${authNotifier!.project?.projectIdentification}");
 
     await fetchAll('debt', model_debt.Debt.fromMap).then((result) async {
       _debts = result;
@@ -99,7 +85,7 @@ class DebtNotifier extends BaseNotifier {
   }
 
   Future<DocumentReference> addDebt(model_debt.Debt debt) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     Map<String, dynamic> data = debt.toMap();
     data = completeAdd(data);
     data.putIfAbsent('paymentRefs', () => []);
@@ -108,14 +94,14 @@ class DebtNotifier extends BaseNotifier {
   }
 
   Future<void> updateDebt(model_debt.Debt debt) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     Map<String, dynamic> data = debt.toMap();
     data = completeUpdate(data);
     await firestore.collection('debt').doc(debt.id).update(data);
   }
 
   Future<void> deleteDebt(String debtId) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     // Optional: Delete associated payments first if they are in a subcollection or need cleanup
     // For now, just deleting the debt document.
     await firestore.collection('debt').doc(debtId).delete();
@@ -123,7 +109,7 @@ class DebtNotifier extends BaseNotifier {
 
   // --- Payment Methods for a specific Debt ---
   Future<void> addPaymentToDebt(model_debt.Debt debt, model_payment.Payment payment) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     
     // 1. Create the payment document in a 'payments' subcollection of the debt OR a root 'payments' collection
     // For this example, using a root 'payments' collection and linking via debtRef in Payment model
@@ -151,7 +137,7 @@ class DebtNotifier extends BaseNotifier {
   }
 
   Future<void> deletePaymentFromDebt(model_debt.Debt debtId, model_payment.Payment paymentId, Null Function() callback) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
 
     DocumentReference paymentDocRef = firestore.collection('payment').doc(paymentId.id!);
     DocumentReference debtDocRef = firestore.collection('debt').doc(debtId.id!);
@@ -169,8 +155,8 @@ class DebtNotifier extends BaseNotifier {
   }
 
   // --- Economize Methods (from previous subtask, ensure they are complete) ---
-  void fetchEconomizes() {
-    if (_currentUser == null) {
+  Future<void> fetchEconomizes() async {
+    if (authNotifier!.user == null) {
       _economizes = []; _isEconomizeLoading = false; notifyListeners(); return;
     }
 
@@ -201,7 +187,7 @@ class DebtNotifier extends BaseNotifier {
   }
 
   Future<void> addEconomize(model_economize.Economize economizeGoal) async {
-    if (_currentUser == null) {
+    if (authNotifier!.user == null) {
       print("No user logged in");
       throw Exception("User not logged in");
     }
@@ -217,7 +203,7 @@ class DebtNotifier extends BaseNotifier {
   }
 
   Future<void> updateEconomize(model_economize.Economize economizeGoal) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     Map<String, dynamic> data = economizeGoal.toMap();
     completeUpdate(data);
 
@@ -225,19 +211,19 @@ class DebtNotifier extends BaseNotifier {
   }
 
   Future<void> deleteEconomize(String economizeId) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     await firestore.collection('economize').doc(economizeId).delete();
   }
 
   Future<void> linkTransactionToEconomize(String economizeId, DocumentReference transactionRef) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     await firestore.collection('economize').doc(economizeId).update({
       'transactionRefs': FieldValue.arrayUnion([transactionRef])
     });
   }
 
   Future<void> unlinkTransactionFromEconomize(String economizeId, DocumentReference transactionRef) async {
-    if (_currentUser == null) throw Exception("User not logged in");
+    if (authNotifier!.user == null) throw Exception("User not logged in");
     await firestore.collection('economize').doc(economizeId).update({
       'transactionRefs': FieldValue.arrayRemove([transactionRef])
     });

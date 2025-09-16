@@ -16,14 +16,20 @@ class TransactionListScreen extends StatefulWidget {
 
 class _TransactionListScreenState extends State<TransactionListScreen> {
   
-  @override
-void didChangeAppLifecycleState(AppLifecycleState state) {
-  if (state == AppLifecycleState.resumed) {
-    // Nur ausführen, wenn du es wirklich brauchst
-    // z. B. keine ViewModels neu initialisieren!
-  }
+  TransactionNotifier get notifier => Provider.of<TransactionNotifier>(context, listen: false);
+  bool _transactionsLoaded = false;
+
+@override
+void initState() {
+  super.initState();
+  Future.delayed(Duration.zero, () {
+    if (!_transactionsLoaded) {
+      notifier.fetchTransactions();
+      _transactionsLoaded = true;
+    }
+  });
 }
-  
+
   int filteredIndex = 2; // 0 = paid, 1 = unpaid, 2 = all
   int filteredTransactionsIndex = 1; // 0 = income, 1 = expense
   bool showStatistic = false;
@@ -65,7 +71,7 @@ builder: (context, vm, child) {
 
     final List<Widget> headerWidgets = [
       Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.all(16.0),
         child: TextField(
           decoration: InputDecoration(
             labelText: 'Search transaction',

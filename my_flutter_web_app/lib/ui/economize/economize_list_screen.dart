@@ -19,6 +19,13 @@ class EconomizeListScreen extends StatefulWidget {
 
 class _EconomizeListScreenState extends State<EconomizeListScreen> {
 
+    @override
+  void initState() {
+    super.initState();
+    Future.microtask(() async =>
+      await Provider.of<DebtNotifier>(context, listen: false).fetchEconomizes()
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final authNotifier = Provider.of<AuthNotifier>(context);
