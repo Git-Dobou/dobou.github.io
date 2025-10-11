@@ -149,14 +149,11 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        transactionNotifier.loading(true);
         Navigator.of(context).pop();
       }).catchError((error) {
         scaffoldMessenger.showSnackBar(
             SnackBar(content: Text('Failed to ${_isEditing ? "update" : "add"} transaction: $error'), backgroundColor: Colors.redAccent));
       });
-
-      transactionNotifier.loading(false);
     }
   }
 

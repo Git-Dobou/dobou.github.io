@@ -35,7 +35,7 @@ class TransactionNotifier extends BaseNotifier {
 
   TransactionNotifier({required this.debtNotifier, required this.categoryNotifier, required AuthNotifier authNotifier}) {
     this.authNotifier = authNotifier;
-    
+    categoryNotifier.fetchCategories();
   }
 
   void loading(bool status) {
@@ -277,7 +277,7 @@ for (var t in allTransactions) {
           .map((ref) => ref!.id)
           .toList();
 
-      final categoryChunks = transactionIds.slices(10);
+      final categoryChunks = transactionIds.slices(30);
       for (final chunk in categoryChunks) {
         final snap = await firestore
             .collection('category')
@@ -293,12 +293,14 @@ for (var t in allTransactions) {
     Map<String, model_debt.Debt> debts = {};
     if (allTransactions.isNotEmpty) {
       final transactionIds = allTransactionsWithRef.map((e) => e.key).toList();
-      final debtChunks = transactionIds.slices(10);
+      final debtChunks = transactionIds.slices(30);
       for (final chunk in debtChunks) {
         final snap = await firestore
             .collection('debt')
             .where('transactionRef', whereIn: chunk)
             .get();
+
+            print('debt holen');
         for (var doc in snap.docs) {
           final debt = model_debt.Debt.fromMap(doc.data(), doc.id);
           // Mappe nach transactionId!
@@ -307,28 +309,27 @@ for (var t in allTransactions) {
       }
     }
 
-    print(allTransactions.length);
-    print(debts);
+    print(transactionStatusRefs.length);
+    final statusChunks = transactionStatusRefs.toSet().toList().slices(30);
+   Map<String, TransactionStatus> statuses = {};
 
-    // TransactionStatus batch laden
-    Map<String, TransactionStatus> statuses = {};
-    if (transactionStatusRefs.isNotEmpty) {
-      final statusChunks = transactionStatusRefs.toSet().toList().slices(10);
-      for (final chunk in statusChunks) {
-        final snap = await firestore
-            .collection('transactionStatus')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .get();
-        for (var doc in snap.docs) {
+  for (final chunk in statusChunks) {
+    final snap = await firestore
+        .collection('transactionStatus')
+        .where(FieldPath.documentId, whereIn: chunk)
+        .where('date', isEqualTo: selectedMonth)
+        .get();
+
+        print('transactionStatus');
+    for (var doc in snap.docs) {
           statuses[doc.id] = TransactionStatus.fromMap(doc.data(), doc.id);
-        }
-      }
     }
+  }
 
     // TransactionNewAmount batch laden
     Map<String, TransactionNewAmount> newAmounts = {};
     if (transactionNewAmountRefs.isNotEmpty) {
-      final newAmountChunks = transactionNewAmountRefs.toSet().toList().slices(10);
+      final newAmountChunks = transactionNewAmountRefs.toSet().toList().slices(30);
       for (final chunk in newAmountChunks) {
         final snap = await firestore
             .collection('transactionNewAmount')
@@ -343,7 +344,7 @@ for (var t in allTransactions) {
     // SubTransactions batch laden
     Map<String, model.Transaction> subTransactions = {};
     if (subTransactionRefs.isNotEmpty) {
-      final subChunks = subTransactionRefs.toSet().toList().slices(10);
+      final subChunks = subTransactionRefs.toSet().toList().slices(30);
       for (final chunk in subChunks) {
         final snap = await firestore
             .collection('transaction')
@@ -367,7 +368,9 @@ for (var t in allTransactions) {
       if (debts.containsKey(transaction.id)) {
         transaction.debt = await debtNotifier.buildDebt(debts[transaction.id]!);
         final restMonth = transaction.debt?.restMonth ?? 0;
-        if (restMonth == 0) {
+        if(transaction.debt?.isPayed == true) {
+          continue; // Wenn die Schuld abbezahlt ist, überspringe diese Transaktion //TODO: Überdenken, ob das so gewollt ist
+        } else if (restMonth == 0) {
           transaction.availableUntil = transaction.debt?.lastPaymentDate;
         } else {
           transaction.availableUntil = Jiffy.parseFromDateTime(DateTime.now())
@@ -449,9 +452,9 @@ for (var t in allTransactions) {
 
     await firestore.collection('transaction').doc(transaction.id).update(transactionData);
 
-    var index = filteredTransactions.indexWhere((b) => b.id == transaction.id);
+    var index = _transactionsPerMonth[selectedMonth]?.indexWhere((b) => b.id == transaction.id);
     var ref = await getRef(transaction.id, 'transaction');
-    filteredTransactions[index] = await BuildTransactionWithBoth(transaction, ref!);
+    _transactionsPerMonth[selectedMonth]?[index!] = await BuildTransactionWithBoth(transaction, ref!);
     setFilteredTransactions();
   }
 
@@ -462,9 +465,9 @@ for (var t in allTransactions) {
     Map<String, dynamic> transactionData = transaction.toJson();
     transactionData = completeUpdate(transactionData);
     await firestore.collection('transaction').doc(transaction.id).update(transactionData);
-    var index = filteredTransactions.indexWhere((b) => b.id == transaction.id);
-    filteredTransactions.removeAt(index);
-
+    var index = _transactionsPerMonth[selectedMonth]?.indexWhere((b) => b.id == transaction.id);
+    filteredTransactions.removeAt(index!);
+    
     setFilteredTransactions();
   }
 
